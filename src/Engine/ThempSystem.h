@@ -3,7 +3,8 @@
 #include <Windows.h>
 #include <map>
 #include <vector>
-
+#include <time.h>
+#include <iostream>
 #define ReportLiveObjects 0
 
 #define CLEAN(x) if(x){x->Release();x=nullptr;}
@@ -11,6 +12,7 @@
 namespace Themp
 {
 	
+
 	struct Timer
 	{
 	public:
@@ -76,12 +78,15 @@ namespace Themp
 	class Game;
 	class D3D;
 	class Resources;
+	class GUI;
 	class System
 	{
 	public:
+		static FILE* logFile;
+		static void Print(const char* message, ...);
+
 		static Themp::System* tSys;
 		System() {}; 
-
 		void Start();
 		void Interrupt() {}; // Alt tab, lost focus etc...
 
@@ -92,5 +97,6 @@ namespace Themp
 		Themp::Game* m_Game;
 		Themp::D3D* m_D3D;
 		Themp::Resources* m_Resources;
+		Themp::GUI* m_GUI;
 	};
 };

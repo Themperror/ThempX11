@@ -4,6 +4,7 @@
 #define BASE_TEXTURE_PATH "../data/textures/"
 #define BASE_SHADER_PATH "../data/shaders/"
 #define BASE_MODEL_PATH "../data/models/"
+#define BASE_MATERIAL_PATH "../data/materials/"
 
 #define MODEL_VERSION_HIGH 1
 #define MODEL_VERSION_LOW 7
@@ -32,9 +33,9 @@ namespace Themp
 		ID3D11GeometryShader * GetGeometryShader(std::string name);
 
 		//shaderpath will detect shaders in a named pattern like "path_%type%" so as shader_VS, shader_PS, shader_GS
-		Themp::Material* LoadMaterial(std::string texture, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader);
+		Themp::Material* LoadMaterial(std::string materialName, std::string texture, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED = nullptr, int numElements = 0);
 		//shaderpath will detect shaders in a named pattern like "path_%type%" so as shader_VS, shader_PS, shader_GS
-		Themp::Material * LoadMaterial(std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader);
+		Themp::Material * LoadMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader);
 		//Themp::Material * LoadMaterial(std::vector<std::string>& textures, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader);
 		
 		Object3D* LoadModel(std::string name);

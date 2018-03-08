@@ -28,7 +28,7 @@ namespace Themp
 
 			result = m_Device->CreateTexture2D(&renderTexDesc, nullptr, &m_Texture);
 
-			if (result != S_OK) { printf("Could not CreateTexture2D"); return; }
+			if (result != S_OK) { System::Print("Could not CreateTexture2D"); return; }
 			// use the back buffer address to create the render target
 			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
 			memset(&srvDesc, 0, sizeof(D3D11_SHADER_RESOURCE_VIEW_DESC));
@@ -38,10 +38,10 @@ namespace Themp
 			srvDesc.ViewDimension = D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2D;
 
 			result = m_Device->CreateShaderResourceView(m_Texture, &srvDesc, &m_ShaderResourceView);
-			if (result != S_OK) { printf("Could not CreateShaderResourceView"); return; }
+			if (result != S_OK) { System::Print("Could not CreateShaderResourceView"); return; }
 
 			result = m_Device->CreateRenderTargetView(m_Texture, nullptr, &m_RenderTarget);
-			if (result != S_OK) { printf("Could not CreateRenderTargetView"); return; }
+			if (result != S_OK) { System::Print("Could not CreateRenderTargetView"); return; }
 
 		}
 		else if (type == TextureType::DepthTex || type == TextureType::CubeDepthTex)
@@ -86,7 +86,7 @@ namespace Themp
 			result = m_Device->CreateTexture2D(&depthBufferDesc, NULL, &m_Texture);
 			if (result != S_OK)
 			{
-				printf("Could not create Depthstencil texture");
+				System::Print("Could not create Depthstencil texture");
 				return;
 			}
 			D3D11_DEPTH_STENCIL_DESC dsDesc;
@@ -117,7 +117,7 @@ namespace Themp
 			result = m_Device->CreateDepthStencilState(&dsDesc, &m_DeptStencilState);
 			if (result != S_OK)
 			{
-				printf("Could not create Depthstencil state");
+				System::Print("Could not create Depthstencil state");
 				return;
 			}
 			//m_DevCon->OMSetDepthStencilState(m_DeptStencilState, 1);
@@ -132,7 +132,7 @@ namespace Themp
 				&m_DepthStencilView);  // [out] Depth stencil view
 			if (result != S_OK)
 			{
-				printf("Could not create Depthstencil view");
+				System::Print("Could not create Depthstencil view");
 				return;
 			}
 			depthSRVDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
@@ -146,7 +146,7 @@ namespace Themp
 				&m_ShaderResourceView);  // [out] Depth stencil view
 			if (result != S_OK)
 			{
-				printf("Could not create Depthstencil shader resource view");
+				System::Print("Could not create Depthstencil shader resource view");
 				return;
 			}
 		}

@@ -32,8 +32,9 @@ namespace Themp
 	public:
 		struct MaterialConstantBuffer
 		{
-			bool hasNormal, HasSpecular, HasMisc, dummy;
-		};
+			int hasNormal, hasPBR, dummy1, isEmissive; //16 bytes
+			float Metallic, Roughness, EmissiveStrength, F0; //16
+		};//16
 
 		//This is from Assimp, and also what we import.
 		// DIFFUSE AND AMBIENT = diffuse ( 1 & 3)
@@ -44,7 +45,7 @@ namespace Themp
 		{
 			NONE = 0x0,
 			DIFFUSE = 0x1,
-			SPECULAR = 0x2,
+			PBR = 0x2,
 			AMBIENT = 0x3,
 			EMISSIVE = 0x4,
 			HEIGHT = 0x5,
@@ -76,6 +77,8 @@ namespace Themp
 		ID3D10Blob* ReadToBlob(std::string path);
 		void ReadTexture(std::string path);
 		void ReadTextures(std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes);
+		void LoadMaterialProperties(std::string matName);
+		void UpdateBuffer();
 		//void ReadTextures(std::vector<std::string>& textures);
 	};
 }

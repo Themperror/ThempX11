@@ -112,7 +112,7 @@ namespace Themp
 		mesh->numIndices = 36;
 		mesh->numVertices = 8;
 		mesh->ConstructVertexBuffer();
-		mesh->m_Material = Themp::System::tSys->m_Resources->LoadMaterial("DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
+		mesh->m_Material = Themp::System::tSys->m_Resources->LoadMaterial("","DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
 		m_Meshes.push_back(mesh);
 	}
 	void Object3D::CreateTriangle(std::string shader, bool vertexShader, bool pixelShader, bool geometryShader)
@@ -132,7 +132,7 @@ namespace Themp
 		mesh->numIndices = 3;
 		mesh->numVertices = 3;
 		mesh->ConstructVertexBuffer();
-		mesh->m_Material = Themp::System::tSys->m_Resources->LoadMaterial("DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
+		mesh->m_Material = Themp::System::tSys->m_Resources->LoadMaterial("", "DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
 		m_Meshes.push_back(mesh);
 	}
 	void Object3D::CreateQuad(std::string shader, bool vertexShader, bool pixelShader, bool geometryShader)
@@ -154,7 +154,7 @@ namespace Themp
 		mesh->numIndices = 6;
 		mesh->numVertices = 4;
 		mesh->ConstructVertexBuffer();
-		mesh->m_Material = Themp::System::tSys->m_Resources->LoadMaterial("DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
+		mesh->m_Material = Themp::System::tSys->m_Resources->LoadMaterial("", "DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
 		m_Meshes.push_back(mesh);
 	}
 	void Object3D::Construct()

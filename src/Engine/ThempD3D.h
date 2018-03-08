@@ -6,10 +6,10 @@
 #include "ThempMaterial.h"
 
 
-#define NUM_RENDER_TEXTURES 5
+#define NUM_RENDER_TEXTURES 6
 
-//the +2 is for the depth texture and shadow map
-#define NUM_SHADER_RESOURCE_VIEWS NUM_RENDER_TEXTURES+2
+//the +4 is for the depth texture, shadow map and one skybox for reflections and one IBL
+#define NUM_SHADER_RESOURCE_VIEWS NUM_RENDER_TEXTURES+4
 
 
 #define NUM_LIGHTS 3
@@ -22,7 +22,22 @@ namespace Themp
 		float screenWidth;
 		float screenHeight;
 		float visualType;
-		float dummy2;
+		float globalAbsorption;
+
+		float globalSpecular;
+		float globalRoughness = 0.05;
+		float globalMetallic;
+		float globalIor;
+
+		float globalRefraction;
+		float F0x;
+		float F0y;
+		float F0z;
+
+		float d3;
+		float d4;
+		float d5;
+		float d6;
 	};
 	struct Light
 	{
@@ -64,7 +79,6 @@ namespace Themp
 	{
 		Light* l;
 		bool LightIsDirty;
-		RenderTexture* tex;
 	};
 	class Game;
 	class ShadowMap;
@@ -81,6 +95,7 @@ namespace Themp
 		void RenderShadowsDirectionalLight(DirectionalLight * l);
 		void PrepareSystemBuffer(Game & game);
 		void Draw(Game& game);
+		void DrawImGUI();
 		void DrawGBufferPass(Game& game);
 		void DrawShadowMaps(Game& game);
 		void DrawLightPass();
@@ -116,6 +131,7 @@ namespace Themp
 		ID3D11BlendState* m_OMBlendState = nullptr;
 		ID3D11Texture2D* m_DepthStencil = nullptr;
 		ID3D11DepthStencilState * m_DeptStencilState = nullptr;
+		ID3D11DepthStencilState * m_SkyboxDeptStencilState = nullptr;
 		ID3D11DepthStencilView* m_DepthStencilView = nullptr;
 		ID3D11ShaderResourceView* m_DepthStencilSRV = nullptr;
 
@@ -140,6 +156,7 @@ namespace Themp
 		static Material* DefaultMaterial;
 		static Material* DefaultMaterialShadow;
 		static Material* DefaultMaterialPresent;
+		static Material* DefaultMaterialSkybox;
 		static ID3D11SamplerState* DefaultTextureSampler;
 		static ID3D11Buffer* ConstantBuffers[5];
 	};
