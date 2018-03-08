@@ -65,7 +65,7 @@ namespace Themp
 		XMVECTOR dir = XMLoadFloat3(&m_LookDirection);
 		XMVECTOR pos = XMLoadFloat3(&m_Position);
 		XMFLOAT3 finalPos;
-		XMStoreFloat3(&finalPos, pos + XMVector3Cross(up, dir) * val);
+		XMStoreFloat3(&finalPos, pos + XMVector3Normalize(XMVector3Cross(up, dir)) * val);
 		m_Position = finalPos;
 	}
 	void Camera::MoveLeft(float val)
@@ -75,7 +75,7 @@ namespace Themp
 		XMVECTOR dir = XMLoadFloat3(&m_LookDirection);
 		XMVECTOR pos = XMLoadFloat3(&m_Position);
 		XMFLOAT3 finalPos;
-		XMStoreFloat3(&finalPos, pos - XMVector3Cross(up, dir) * val);
+		XMStoreFloat3(&finalPos, pos - XMVector3Normalize(XMVector3Cross(up, dir)) * val);
 		m_Position = finalPos;
 	}
 	void Camera::MoveUp(float val)
@@ -173,6 +173,8 @@ namespace Themp
 			XMStoreFloat4x4(&m_CameraConstantBufferData.viewMatrix, (viewMatrix));
 			XMStoreFloat4x4(&m_CameraConstantBufferData.invProjectionMatrix, (invProjectionMatrix));
 			XMStoreFloat4x4(&m_CameraConstantBufferData.invViewMatrix, (invViewMatrix));
+			m_CameraConstantBufferData.cameraPosition = XMFLOAT4(m_Position.x, m_Position.y, m_Position.z, 1.0);
+			m_CameraConstantBufferData.cameraDir = XMFLOAT4(m_LookDirection.x, m_LookDirection.y, m_LookDirection.z, 0.0f);
 
 			D3D11_MAPPED_SUBRESOURCE ms;
 			d3d->m_DevCon->Map(m_CameraConstantBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
@@ -180,9 +182,7 @@ namespace Themp
 			d3d->m_DevCon->Unmap(m_CameraConstantBuffer, NULL);
 			isDirty = false;
 		}
-
 		d3d->SetCameraConstantBuffer(m_CameraConstantBuffer);
-		//viewProjection = view*projection;
 	}
 	XMFLOAT4X4 Camera::GetMVPMatrix()
 	{

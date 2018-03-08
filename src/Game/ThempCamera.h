@@ -13,6 +13,8 @@ namespace Themp
 			XMFLOAT4X4 projectionMatrix;
 			XMFLOAT4X4 invProjectionMatrix;
 			XMFLOAT4X4 invViewMatrix;
+			XMFLOAT4 cameraPosition;
+			XMFLOAT4 cameraDir;
 		};
 	public:
 		enum CameraType { Perspective, Orthographic };
