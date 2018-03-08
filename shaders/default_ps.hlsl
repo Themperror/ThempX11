@@ -11,7 +11,7 @@ float4 PShader(VS_OUTPUT input) : SV_TARGET
 	//textureColor *= shaderTexture[2].Sample(SampleType[2], uv);
 	//textureColor *= shaderTexture[3].Sample(SampleType[3], uv);
 
-	if (visualType == 0.0) //default, proper rendering
+	if (_visualType == 0.0) //default, proper rendering
 	{
 		//float lightRange = 0.03;
 		//float lightStr = saturate(-dot(input.normal, normalize(input.worldPos - lightPos)));
@@ -29,27 +29,27 @@ float4 PShader(VS_OUTPUT input) : SV_TARGET
 		textureColor = diffuse;
 
 	}
-	else if(visualType == 1.0) //only show diffuse
+	else if(_visualType == 1.0) //only show diffuse
 	{
 		textureColor = shaderTexture[0].Sample(SampleType[0], input.uv);
 	}
-	else if (visualType == 2.0) //only show normal maps
+	else if (_visualType == 2.0) //only show normal maps
 	{
 		textureColor = shaderTexture[1].Sample(SampleType[1], input.uv);
 	}
-	else if (visualType == 3.0)//only show specular maps
+	else if (_visualType == 3.0)//only show specular maps
 	{
 		textureColor = shaderTexture[2].Sample(SampleType[2], input.uv);
 	}
-	else if (visualType == 4.0)//only show misc / alpha maps
+	else if (_visualType == 4.0)//only show misc / alpha maps
 	{
 		textureColor = shaderTexture[3].Sample(SampleType[3], input.uv);
 	}
-	else if (visualType == 5.0)//only show UV's
+	else if (_visualType == 5.0)//only show UV's
 	{
 		textureColor.xyz = float3(fmod(input.uv, 1.0f), 0.0); //fmodded to show wrapping textures (keeping values in 0-1 range)
 	}
-	else if (visualType == 6.0) //only show normals
+	else if (_visualType == 6.0) //only show normals
 	{
 		textureColor.xyz = input.normalVS;
 	}

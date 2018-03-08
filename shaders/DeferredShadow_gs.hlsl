@@ -14,8 +14,8 @@ void GShader(triangle VS_SHADOW_OUTPUT input[3], inout TriangleStream<VS_SHADOW_
         output.positionWS = float3(0, 0, 0);
         for (int v = 0; v < 3; v++)
         {
-            float4 nPos = mul(float4(input[v].positionWS, 1), pointLights[0].lightviewmatrix[f]);
-            output.positionVS = mul(nPos, pointLights[0].lightprojmatrix);
+            float4 nPos = mul(float4(input[v].positionWS, 1), _pointLights[0].lightviewmatrix[f]);
+            output.positionVS = mul(nPos, _pointLights[0].lightprojmatrix);
             CubeMapStream.Append(output);
         }
         CubeMapStream.RestartStrip();
