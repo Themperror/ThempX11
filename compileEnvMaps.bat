@@ -1,7 +1,7 @@
 @ECHO Off
 SETLOCAL ENABLEDELAYEDEXPANSION 
-SET "sourcedir=resources\textures"
-SET "destdir=data\textures"
+SET "sourcedir=resources\environmentmaps\"
+SET "destdir=data\environmentmaps\
 
 FOR /f "delims=" %%a IN ('xcopy /y /L /s "%sourcedir%\*"') DO (
  SET "destfile=%%a"

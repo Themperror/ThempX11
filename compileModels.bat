@@ -9,7 +9,7 @@ FOR /f "delims=" %%a IN ('xcopy /y /L /s "%sourcedir%\*"') DO (
  IF /i "%%a" neq "!destfile!" (
   FOR %%m IN ("!destfile!") DO IF NOT EXIST "%%~dpm%%~na.bin" (
    MD "%%~dpm" 2>nul
-   "bin\ThempModelParser.exe" "%%a" "%%~dpm%%~na.bin"
+   "utils\ThempModelParser.exe" "%%a" "%%~dpm%%~na.bin"
   )
  )
 )

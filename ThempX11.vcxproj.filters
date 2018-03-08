@@ -69,6 +69,18 @@
     <ClCompile Include="src\Engine\ThempShadowMap.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
+    <ClCompile Include="src\Library\imgui.cpp">
+      <Filter>Source Files\Library</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Library\imgui_demo.cpp">
+      <Filter>Source Files\Library</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Library\imgui_draw.cpp">
+      <Filter>Source Files\Library</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine\ThempGUI.cpp">
+      <Filter>Source Files\Engine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Engine\ThempD3D.h">
@@ -101,17 +113,29 @@
     <ClInclude Include="src\Engine\ThempShadowMap.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
+    <ClInclude Include="src\Library\imconfig.h">
+      <Filter>Header Files\Library</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Library\imgui.h">
+      <Filter>Header Files\Library</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Library\imgui_internal.h">
+      <Filter>Header Files\Library</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Library\stb_rect_pack.h">
+      <Filter>Header Files\Library</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Library\stb_textedit.h">
+      <Filter>Header Files\Library</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Library\stb_truetype.h">
+      <Filter>Header Files\Library</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine\ThempGUI.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="resources\shaders\default_gs.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="resources\shaders\default_ps.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="resources\shaders\default_vs.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="resources\shaders\Deferred_ps.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
@@ -124,18 +148,6 @@
     <FxCompile Include="resources\shaders\DeferredPresent_vs.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="resources\shaders\ScreenSpace_ps.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="resources\shaders\ScreenSpace_vs.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="resources\shaders\Simple_ps.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="resources\shaders\Simple_vs.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="resources\shaders\DeferredShadow_ps.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
@@ -146,6 +158,33 @@
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
     <FxCompile Include="resources\shaders\DeferredShadow_gs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\GUI_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\GUI_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\ScreenSpace_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\ScreenSpace_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\default_gs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\default_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\default_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\Skybox_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\Skybox_vs.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
   </ItemGroup>
