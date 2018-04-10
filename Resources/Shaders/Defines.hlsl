@@ -66,7 +66,6 @@ struct PS_OUTPUT
 	float4 F0 : SV_TARGET2;
 	float4 misc : SV_TARGET3;
 	float4 pos : SV_TARGET4;
-    float4 pbrData : SV_TARGET5;
 };
 cbuffer ObjectBuffer : register(b0)
 {
@@ -86,22 +85,22 @@ cbuffer ConstantBuffer : register(b2)
     float _screenWidth;
     float _screenHeight;
     float _visualType;
-    float _globalAbsorption;
-		  
-    float _globalSpecular;
+    float _SkyboxLerp;
+
+    float _shadowType;
     float _globalRoughness;
     float _globalMetallic;
-    float _globalIor;
-		  
-    float _globalRefraction;
+    float _MSAAValue;
+
+    float _time;
     float _F0x;
     float _F0y;
     float _F0z;
-		  
-    float _d3;
+
     float _d4;
     float _d5;
     float _d6;
+    float _d7;
 };
 cbuffer MeshBuffer : register(b3)
 {
@@ -172,10 +171,11 @@ float4 WorldToScreen(float3 world)
 }
 
 
-float3 GammaCorrect(float3 col)
+float3 GammaCorrect(float3 col,float scale)
 {
     col = col / (col + float3(1.0, 1.0, 1.0));
-    col = pow(col, float3(0.454545455f, 0.454545455f, 0.454545455f));
+   // col = pow(col, float3(0.454545455f, 0.454545455f, 0.454545455f));
+    col = pow(abs(col), float3(scale, scale, scale));
     return col;
 }
 
@@ -253,7 +253,7 @@ float GSmithSchlickBeckmann_(float NoV, float k)
     return NoV / (NoV * (1.0 - r) + r);
 }
 
-float GSmithSchlickBeckmann(float NoL, float NoV, float NoH, float VoH, float k)
+float GSmithSchlickBeckmann(float NoL, float NoV, float k)
 {
     return GSmithSchlickBeckmann_(NoL, k) * GSmithSchlickBeckmann_(NoV, k);
 }
@@ -275,10 +275,18 @@ float3 BlendMetal(float3 Kdiff, float3 Kspec, float3 Kbase)
     return Kspec * Kbase;
 }
 
-float3 BlendMaterial(float3 albedo, float3 Kdiff, float3 Kspec, float metallic)
+float3 BlendMaterialStepped(float3 albedo, float3 Kdiff, float3 Kspec, float metallic)
 {
     float3 Kbase = albedo;
     float scRange = smoothstep(0.2, 0.45, metallic);
+    float3 dielectric = BlendDielectric(Kdiff, Kspec, Kbase);
+    float3 metal = BlendMetal(Kdiff, Kspec, Kbase);
+    return lerp(dielectric, metal, scRange); 
+}
+float3 BlendMaterial(float3 albedo, float3 Kdiff, float3 Kspec, float metallic)
+{
+    float3 Kbase = albedo;
+    float scRange = metallic;
     float3 dielectric = BlendDielectric(Kdiff, Kspec, Kbase);
     float3 metal = BlendMetal(Kdiff, Kspec, Kbase);
     return lerp(dielectric, metal, scRange);
@@ -323,4 +331,85 @@ float3 FresnelSchlick(float cosTheta, float3 F0)
 float3 FresnelSphericalGaussian(float3 F0, float cosTheta)
 {
     return F0 + (float3(1.0, 1.0, 1.0) - F0) * pow(2.0, (-5.55473 * cosTheta - 6.98316 * cosTheta));
+}
+
+
+
+float3 SpecBRDF(float3 normal, float3 V, float2 texCoord, float roughness, float metallic, float3 F0v, TextureCube SkyTex1, TextureCube SkyTex2, SamplerState samplerType)
+{
+    float3 UpVector = abs(normal.z) < 0.9999 ? float3(0, 0, 1) : float3(1, 0, 0);
+    float3 TangentX = normalize(cross(UpVector, normal));
+    float3 TangentY = normalize(cross(normal, TangentX));
+	
+    uint texWidth = 0;
+    uint texHeight = 0;
+    SkyTex1.GetDimensions(texWidth, texHeight);
+	
+    float NdotV = max(dot(normal, V), 0.0);
+
+    const uint numSamples = 50;
+    float3 sum = float3(0, 0, 0);
+    for (uint i = 0; i < numSamples; ++i)
+    {
+        float2 Xi = Hammersley(i, numSamples);
+        float3 Li = S(Xi, roughness, texCoord);
+        float3 H = normalize(Li.x * TangentX + Li.y * TangentY + Li.z * normal);
+        float3 L = normalize(-reflect(V, H));
+		
+        float NdotL = max(dot(normal, L), 0.0);
+        float NdotH = max(dot(normal, H), 0.0);
+        float VdotH = max(dot(V, H), 0.0);
+
+        float lod = compute_lod(numSamples, texWidth, texHeight, NdotH, roughness);
+
+        float3 F_ = FresnelSchlick(NdotH, F0v);
+        float G_ = GeometryGGX(NdotV, NdotL, roughness);
+        float3 LColor = GammaCorrect(lerp(textureSphereLod(SkyTex1, samplerType, L, lod).rgb, textureSphereLod(SkyTex2, samplerType, L, lod).rgb, _SkyboxLerp), _F0x);
+       
+        sum += F_ * G_ * LColor * VdotH / (NdotH * NdotV + 0.001);
+    }
+    return sum / (float) numSamples;
+}
+float3 BRDF(float3 albedo, float3 F0v, float3 V, float3 normal, float3 lightDir, float4 lightCol, float roughness, float metallic)
+{
+    float3 H = normalize(lightDir + V); //L V
+    float NdotL = max(dot(lightDir, normal), 0.0); // L N cosTheta
+   // cosTheta = max(cosTheta, 0.0);
+    float NdotV = max(dot(normal, V), 0); // N V
+   // float NdotL = dot(normal, lightDir); // N L cosTheta
+
+    float D = DistributionGGX(normal, H, roughness);
+	
+    if (_visualType == 1.0)
+    {
+        return float3(D, D, D);
+    }
+    float3 F = FresnelSchlick(max(dot(normal, H), 0.0), F0v);
+    if (_visualType == 2.0)
+    {
+        return F;
+    }
+
+    float G = GeometryGGX(NdotV, NdotL, roughness); //    GSmithSchlickBeckmann(NdotL, NdotV, max(dot(normal, H), 0.0), 0, roughness);
+    if (_visualType == 3.0)
+    {
+        return float3(G, G, G);
+
+    }
+   
+    float3 nominator = D * G * F;
+    float denominator = 4 * NdotV * NdotL;
+    float3 specular = nominator / max(denominator, 0.001);
+        
+	//direct diffuse part:
+    float3 kS = F;
+    float3 kD = float3(1.0, 1.0, 1.0) - kS;
+    kD *= 1.0 - metallic;
+
+  
+	// add to outgoing radiance Lo
+    float3 Lo = (kD * albedo / PI + specular) * (lightCol.xyz * _F0z * lightCol.w) * NdotL;
+
+
+    return Lo;
 }

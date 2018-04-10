@@ -3,7 +3,7 @@
 //Texture2D shaderTexture[4];
 Texture2D diff : register(t0);
 Texture2D norm : register(t1);
-Texture2D rough : register(t2);
+Texture2D PBR : register(t2);
 Texture2D misc : register(t3);
 
 SamplerState diffSampler : register(s0);
@@ -41,18 +41,22 @@ PS_OUTPUT PShader(VS_OUTPUT input)
     float4 PBRData;
     float roughnessVal = 0.0;
     float metallicVal = 0.0;
+    float AO = 1.0;
 	if (_hasRoughness)
 	{
-        PBRData = rough.Sample(normSampler, input.uv);
+        PBRData = PBR.Sample(normSampler, input.uv);
         roughnessVal = clamp(PBRData.x, 0.02, 0.98);
-        metallicVal = PBRData.y;
+        metallicVal = PBRData.y; 
+        AO = PBRData.z > 0.01 ? PBRData.z : 1.0;
+
     }
 	else
 	{
         roughnessVal = clamp(_Roughness, 0.02, 0.98);
         metallicVal = _Metallic;
     }
-    output.F0 = float4(lerp(output.diffuse.xyz, float3(_F0, _F0, _F0), metallicVal),1.0);
+    output.F0 = float4(lerp(float3(0.04, 0.04, 0.04), output.diffuse.xyz, metallicVal), AO);
+    output.diffuse.xyz *= AO;
 	//if(metallicVal > 0.0)
     //{
     //    output.F0 = output.diffuse;
@@ -62,7 +66,6 @@ PS_OUTPUT PShader(VS_OUTPUT input)
     //    output.F0 = float4(float3(_F0, _F0, _F0), 1.0);
     //}
     output.misc = float4(roughnessVal, metallicVal, _EmissiveStrength, _isEmissive);
-    output.pbrData = float4(1.0, 1.0, 1.0, 1.0);
 
     return output;
 }

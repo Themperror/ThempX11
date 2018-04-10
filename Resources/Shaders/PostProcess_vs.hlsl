@@ -1,6 +1,10 @@
+#pragma pack_matrix( row_major )
+
+
 struct VS_OUTPUT
 {
     float4 positionVS : SV_POSITION;
+    float2 uv : UV0;
 };
 struct VS_INPUT
 {
@@ -13,6 +17,7 @@ struct VS_INPUT
 VS_OUTPUT VShader(VS_INPUT input)
 {
     VS_OUTPUT output;
+    output.uv = float2(input.uv.x, 1 - input.uv.y);
     output.positionVS = float4(input.position, 1.0f);
     return output;
 }

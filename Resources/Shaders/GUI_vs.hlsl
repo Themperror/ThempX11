@@ -19,7 +19,7 @@ struct PS_INPUT
     float2 uv : TEXCOORD0;
 };
 
-PS_INPUT main(VS_INPUT input)
+PS_INPUT VShader(VS_INPUT input)
 {
     PS_INPUT output;
     output.pos = mul(float4(input.pos.xy, 0.0, 1.0),ProjectionMatrix);

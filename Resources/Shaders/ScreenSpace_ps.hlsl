@@ -1,8 +1,15 @@
-#include "Defines.hlsl"
-
-float4 PShader(VS_OUTPUT input) : SV_TARGET
+struct VS_OUTPUT
 {
-    float4 textureColor = float4(0.0, 1.0, 0.0, 0.0); // = shaderTexture[0].Sample(SampleType[0], uv);
-
-    return textureColor;
+    float4 positionVS : SV_POSITION;
+};
+struct PS_OUTPUT
+{
+    float depth : SV_Depth;
+};
+PS_OUTPUT PShader(VS_OUTPUT input)
+{
+    PS_OUTPUT output;
+    //tput.col = float4(0, 0, 0, 0);
+    output.depth = 1.0;
+    return output;
 }
