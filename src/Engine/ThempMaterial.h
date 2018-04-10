@@ -34,28 +34,29 @@ namespace Themp
 		{
 			int hasNormal, hasPBR, dummy1, isEmissive; //16 bytes
 			float Metallic, Roughness, EmissiveStrength, F0; //16
-		};//16
+		};//32
 
 		//This is from Assimp, and also what we import.
 		// DIFFUSE AND AMBIENT = diffuse ( 1 & 3)
 		// HEIGHT = normal (5)
 		// OPACITY = alpha map (8)
 
-		enum aiTextureType
+		enum aiTextureType : uint8_t
 		{
 			NONE = 0x0,
 			DIFFUSE = 0x1,
 			PBR = 0x2,
 			AMBIENT = 0x3,
 			EMISSIVE = 0x4,
-			HEIGHT = 0x5,
-			NORMALS = 0x6,
+			NORMALS = 0x5,
+			HEIGHT = 0x6,
 			SHININESS = 0x7,
 			OPACITY = 0x8,
 			DISPLACEMENT = 0x9,
 			LIGHTMAP = 0xA,
 			REFLECTION = 0xB,
 			UNKNOWN = 0xC,
+			UNUSED = 0xFF,
 		};
 		Material();
 		~Material();
@@ -77,7 +78,7 @@ namespace Themp
 		ID3D10Blob* ReadToBlob(std::string path);
 		void ReadTexture(std::string path);
 		void ReadTextures(std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes);
-		void LoadMaterialProperties(std::string matName);
+		void GetMaterialProperties(std::string matName,std::string* outPBRTexture = nullptr);
 		void UpdateBuffer();
 		//void ReadTextures(std::vector<std::string>& textures);
 	};

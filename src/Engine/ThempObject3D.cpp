@@ -7,46 +7,26 @@
 #include <DirectXMath.h>
 
 #include <iostream>
+using namespace DirectX;
 namespace Themp
 {
 	Object3D::Object3D()
 	{
-		// Fill in a buffer description.
-		D3D11_BUFFER_DESC cbDesc;
-		cbDesc.ByteWidth = sizeof(Object3DConstantBufferData);
-		cbDesc.Usage = D3D11_USAGE_DYNAMIC;
-		cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-		cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-		cbDesc.MiscFlags = 0;
-		cbDesc.StructureByteStride = 0;
-
-		// Fill in the subresource data.
-		D3D11_SUBRESOURCE_DATA InitData;
-		InitData.pSysMem = &m_ConstantBufferData;
-		InitData.SysMemPitch = 0;
-		InitData.SysMemSlicePitch = 0;
-
 		m_Position = XMFLOAT3(0, 0, 0);
 		m_Scale = XMFLOAT3(1,1,1);
 		m_Rotation = XMFLOAT3(0, 0, 0);
-		// Create the buffer.
-		Themp::System::tSys->m_D3D->m_Device->CreateBuffer(&cbDesc, &InitData, &m_ConstantBuffer);
-		Resources::TRes->m_3DObjects.push_back(this);
 	}
 	Object3D::~Object3D()
 	{
-		for (size_t i = 0; i < m_Meshes.size(); i++)
+		if (m_ConstantBuffer)
 		{
-			delete m_Meshes[i];
-			m_Meshes[i] = nullptr;
+			m_ConstantBuffer->Release();
+			m_ConstantBuffer = nullptr;
 		}
-		m_Meshes.clear();
-		m_ConstantBuffer->Release();
-		m_ConstantBuffer = nullptr;
 	}
 	void Object3D::Update(float dt)
 	{
-		m_Rotation.x += dt;
+		m_Rotation.y += dt*0.2;
 		isDirty = true;
 	}
 	void Object3D::Draw(D3D& d3d, bool lightPass)
@@ -60,6 +40,25 @@ namespace Themp
 
 			XMStoreFloat4x4(&m_ConstantBufferData.worldMatrix, (WorldMatrix));
 
+			if (!m_ConstantBuffer)
+			{
+				// Fill in a buffer description.
+				D3D11_BUFFER_DESC cbDesc;
+				cbDesc.ByteWidth = sizeof(Object3DConstantBufferData);
+				cbDesc.Usage = D3D11_USAGE_DYNAMIC;
+				cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+				cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+				cbDesc.MiscFlags = 0;
+				cbDesc.StructureByteStride = 0;
+
+				// Fill in the subresource data.
+				D3D11_SUBRESOURCE_DATA InitData;
+				InitData.pSysMem = &m_ConstantBufferData;
+				InitData.SysMemPitch = 0;
+				InitData.SysMemSlicePitch = 0;
+				// Create the buffer.
+				Themp::System::tSys->m_D3D->m_Device->CreateBuffer(&cbDesc, &InitData, &m_ConstantBuffer);
+			}
 			D3D11_MAPPED_SUBRESOURCE ms;
 			d3d.m_DevCon->Map(m_ConstantBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
 			memcpy(ms.pData, &m_ConstantBufferData, sizeof(Object3DConstantBufferData));
@@ -80,9 +79,43 @@ namespace Themp
 			m_Meshes[i]->Draw(d3d,lightPass);
 		}
 	}
+	void Object3D::ForceBufferUpdate()
+	{
+		XMVECTOR trans = XMLoadFloat3(&m_Position), rot = XMLoadFloat3(&m_Rotation), scale = XMLoadFloat3(&m_Scale);
+
+		XMMATRIX RotScale = XMMatrixRotationRollPitchYawFromVector(rot) *  XMMatrixScalingFromVector(scale);
+		XMMATRIX WorldMatrix = RotScale * XMMatrixTranslationFromVector(trans);
+
+		XMStoreFloat4x4(&m_ConstantBufferData.worldMatrix, (WorldMatrix));
+
+		if (!m_ConstantBuffer)
+		{
+			// Fill in a buffer description.
+			D3D11_BUFFER_DESC cbDesc;
+			cbDesc.ByteWidth = sizeof(Object3DConstantBufferData);
+			cbDesc.Usage = D3D11_USAGE_DYNAMIC;
+			cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+			cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			cbDesc.MiscFlags = 0;
+			cbDesc.StructureByteStride = 0;
+
+			// Fill in the subresource data.
+			D3D11_SUBRESOURCE_DATA InitData;
+			InitData.pSysMem = &m_ConstantBufferData;
+			InitData.SysMemPitch = 0;
+			InitData.SysMemSlicePitch = 0;
+			// Create the buffer.
+			Themp::System::tSys->m_D3D->m_Device->CreateBuffer(&cbDesc, &InitData, &m_ConstantBuffer);
+		}
+		D3D11_MAPPED_SUBRESOURCE ms;
+		D3D::s_D3D->m_DevCon->Map(m_ConstantBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
+		memcpy(ms.pData, &m_ConstantBufferData, sizeof(Object3DConstantBufferData));
+		D3D::s_D3D->m_DevCon->Unmap(m_ConstantBuffer, NULL);
+	}
 	void Object3D::CreateCube(std::string shader, bool vertexShader, bool pixelShader, bool geometryShader)
 	{
 		Mesh* mesh = new Mesh();
+		Themp::System::tSys->m_Resources->m_Meshes.push_back(mesh);
 		mesh->vertices = new Vertex[8];
 		mesh->vertices[0] = { -0.5f, +0.5f, -0.5f  , 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,0.0f };
 		mesh->vertices[1] = { +0.5f, +0.5f, -0.5f  , 0.0f, 1.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
@@ -112,12 +145,13 @@ namespace Themp
 		mesh->numIndices = 36;
 		mesh->numVertices = 8;
 		mesh->ConstructVertexBuffer();
-		mesh->m_Material = Themp::System::tSys->m_Resources->LoadMaterial("","DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
+		mesh->m_Material = Themp::System::tSys->m_Resources->GetMaterial("","DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
 		m_Meshes.push_back(mesh);
 	}
 	void Object3D::CreateTriangle(std::string shader, bool vertexShader, bool pixelShader, bool geometryShader)
 	{
 		Mesh* mesh = new Mesh();
+		Themp::System::tSys->m_Resources->m_Meshes.push_back(mesh);
 		mesh->vertices = new Vertex[3];
 		mesh->vertices[0] = { -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,0.0f };
 		mesh->vertices[1] = { -0.5f, +0.5f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
@@ -132,12 +166,13 @@ namespace Themp
 		mesh->numIndices = 3;
 		mesh->numVertices = 3;
 		mesh->ConstructVertexBuffer();
-		mesh->m_Material = Themp::System::tSys->m_Resources->LoadMaterial("", "DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
+		mesh->m_Material = Themp::System::tSys->m_Resources->GetMaterial("", "DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
 		m_Meshes.push_back(mesh);
 	}
 	void Object3D::CreateQuad(std::string shader, bool vertexShader, bool pixelShader, bool geometryShader)
 	{
 		Mesh* mesh = new Mesh();
+		Themp::System::tSys->m_Resources->m_Meshes.push_back(mesh);
 		mesh->vertices = new Vertex[4];
 		mesh->vertices[0] = { -1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,0.0f };
 		mesh->vertices[1] = { -1.0f, +1.0f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
@@ -154,7 +189,7 @@ namespace Themp
 		mesh->numIndices = 6;
 		mesh->numVertices = 4;
 		mesh->ConstructVertexBuffer();
-		mesh->m_Material = Themp::System::tSys->m_Resources->LoadMaterial("", "DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
+		mesh->m_Material = Themp::System::tSys->m_Resources->GetMaterial("", "DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
 		m_Meshes.push_back(mesh);
 	}
 	void Object3D::Construct()

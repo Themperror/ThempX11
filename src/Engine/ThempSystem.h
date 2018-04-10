@@ -11,8 +11,6 @@
 
 namespace Themp
 {
-	
-
 	struct Timer
 	{
 	public:
@@ -74,7 +72,7 @@ namespace Themp
 		LARGE_INTEGER oldT,newT;
 		LARGE_INTEGER freq;
 	};
-
+	float lerp(float x, float y, float t);
 	class Game;
 	class D3D;
 	class Resources;
@@ -92,7 +90,7 @@ namespace Themp
 
 		HWND m_Window = nullptr;
 		bool m_Quitting = false;
-		bool m_CursorShown = false;
+		bool m_CursorShown = true;
 		std::map<std::string, float> m_SVars;
 		Themp::Game* m_Game;
 		Themp::D3D* m_D3D;

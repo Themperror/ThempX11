@@ -69,7 +69,7 @@ namespace Themp
 	}
 	void Material::ReadTextures(std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes)
 	{
-		numTextures = textures.size();
+		numTextures = (uint32_t)textures.size();
 		if (textures.size() > MAX_TEXTURES)
 		{
 			System::Print("Found more than %i textures for a material, this is not supported yet!", MAX_TEXTURES);
@@ -85,24 +85,23 @@ namespace Themp
 		{
 			switch (textureTypes[i])
 			{
-			case 1: defaultTextures[0] = textures[i];
+			case Material::DIFFUSE:
+				defaultTextures[0] = textures[i];
 				break;
-			case 2: defaultTextures[2] = textures[i];
-				m_MaterialConstantBufferData.hasPBR = true;
+			case Material::PBR: defaultTextures[2] = textures[i];
+				m_MaterialConstantBufferData.hasPBR = textures[i] != "DefaultPBR.dds" ? true : false;
 				break;
-			case 3: defaultTextures[0] = textures[i]; 
+			case Material::AMBIENT: 
+				defaultTextures[0] = textures[i]; 
 				break;
-			case 5: defaultTextures[1] = textures[i];
+			case Material::NORMALS: defaultTextures[1] = textures[i];
 				m_MaterialConstantBufferData.hasNormal = true;
 				break;
-			case 7: defaultTextures[2] = textures[i];
-				m_MaterialConstantBufferData.hasPBR = true;
-				break;
-			case 8: defaultTextures[3] = textures[i];
+			case Material::UNKNOWN: defaultTextures[3] = textures[i];
 				m_MaterialConstantBufferData.dummy1 = true;
 				break;
-			case ((uint8_t)(-1)): break;
-			default: System::Print("ThempMaterial::ReadTextures | New unhandled texture type found: %i : %s \n", textureTypes[i], textures.at(i).c_str());
+			case Material::UNUSED: break;
+			default: System::Print("ThempMaterial::ReadTextures | New unhandled texture type found: %i : %s \n", textureTypes[i], textures.at(i).c_str()); break;
 			}
 		}
 
@@ -158,7 +157,7 @@ namespace Themp
 		}
 
 	}
-	void Material::LoadMaterialProperties(std::string matName)
+	void Material::GetMaterialProperties(std::string matName,std::string* outPBRTexture)
 	{
 		matName.append(".mat");
 		std::ifstream input(BASE_MATERIAL_PATH + matName);
@@ -170,6 +169,14 @@ namespace Themp
 			{
 				input >> a0 >> a1;
 
+				if (a0 == "PBRTexture")
+				{
+					if (outPBRTexture)
+					{
+						outPBRTexture->clear();
+						outPBRTexture->append(a1);
+					}
+				}
 				if (a0 == "Metallic")
 				{
 					m_MaterialConstantBufferData.Metallic = std::stof(a1);
@@ -186,12 +193,12 @@ namespace Themp
 				{
 					m_MaterialConstantBufferData.EmissiveStrength = std::stof(a1);
 				}
-				if (a0 == "F0")
-				{
-					m_MaterialConstantBufferData.F0 = std::stof(a1);
-				}
 			}
 			input.close();
+		}
+		else
+		{
+			System::Print("Could not find Material: %s", (BASE_MATERIAL_PATH + matName).c_str());
 		}
 	}
 	void Material::UpdateBuffer()

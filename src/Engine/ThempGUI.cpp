@@ -64,7 +64,7 @@ namespace Themp
 	//Most code is taken from https://github.com/ocornut/imgui/blob/master/examples/directx11_example/imgui_impl_dx11.cpp to speed up development
 	void GUI::Init()
 	{
-		m_Material = Themp::Resources::TRes->LoadMaterial("GUI", "", "GUI", true, true, false, local_layout,3);
+		m_Material = Themp::Resources::TRes->GetMaterial("GUI", "", "GUI", true, true, false, local_layout,3,false);
 		
 		ID3D11Device* dev = Themp::System::tSys->m_D3D->m_Device;
 
@@ -353,8 +353,15 @@ namespace Themp
 			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 			srvDesc.Texture2D.MipLevels = desc.MipLevels;
 			srvDesc.Texture2D.MostDetailedMip = 0;
-			Themp::System::tSys->m_D3D->m_Device->CreateShaderResourceView(pTexture, &srvDesc, &m_ShaderResourceView);
-			pTexture->Release();
+			if (pTexture != nullptr)
+			{
+				Themp::System::tSys->m_D3D->m_Device->CreateShaderResourceView(pTexture, &srvDesc, &m_ShaderResourceView);
+				pTexture->Release();
+			}
+			else
+			{
+				System::Print("Could not load font texture");
+			}
 		}
 
 		// Store our identifier

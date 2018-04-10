@@ -18,15 +18,18 @@ namespace Themp
 		Mesh();
 		~Mesh();
 		void ConstructVertexBuffer();
-		void SetGPUData(Themp::D3D & d3d);
 		void Draw(Themp::D3D& d3d, bool lightPass = false);
 		Material* m_Material;
 		Vertex* vertices;
 		uint32_t numVertices;
 		uint32_t* indices;
 		uint32_t numIndices;
+		size_t i_VertexBuffer;
+		size_t i_IndexBuffer;
 
+		//do not change manually
 		ID3D11Buffer* m_VertexBuffer;
+		//do not change manually
 		ID3D11Buffer* m_IndexBuffer;
 	};
 }

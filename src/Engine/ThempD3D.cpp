@@ -6,14 +6,19 @@
 #include "ThempMaterial.h"
 #include "ThempMesh.h"
 #include "ThempRenderTexture.h"
-#include "ThempShadowMap.h"
+#include "ThempShadowAtlas.h"
 #include "ThempGUI.h"
-#include "../Game/ThempCamera.h"
+#include "ThempCamera.h"
+#include "Shadowing\ThempShadowUnfiltered.h"
+#include "Shadowing\ThempShadowPCF.h"
+#include "Shadowing\ThempShadowCascade.h"
+#include "Shadowing\ThempShadowVariance.h"
+#include "Shadowing\ThempShadowMoment.h"
 #include <imgui.h>
 #include <iostream>
 #include <fstream>
 
-
+using namespace DirectX;
 
 namespace Themp
 {
@@ -36,14 +41,23 @@ namespace Themp
 		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "BITANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "UV", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-	}; 
-	
+	};
+
+	D3D* D3D::s_D3D = nullptr;
+
 	uint32_t D3D::DefaultInputLayoutNumElements = 5;
 	Material* D3D::DefaultMaterial;
-	Material* D3D::DefaultMaterialShadow;
-	Material* D3D::DefaultMaterialPresent;
 	Material* D3D::DefaultMaterialSkybox;
+	Material* D3D::DefaultPostProcess;
 	ID3D11SamplerState* D3D::DefaultTextureSampler;
+
+	//cannot place in the header due to heritance
+	ShadowUnfiltered* m_ShadowUnfiltered;
+	ShadowPCF* m_ShadowPCF;
+	ShadowCascade* m_ShadowCascade;
+	ShadowVariance* m_ShadowVariance;
+	ShadowMoment* m_ShadowMoment;
+
 
 	//0 object
 	//1 camera
@@ -51,10 +65,9 @@ namespace Themp
 	//3 material
 	//4 light
 	ID3D11Buffer* D3D::ConstantBuffers[5];
-	Object3D* m_FullScreenQuad = nullptr;
-	Object3D* m_Skybox = nullptr;
 	bool D3D::Init()
 	{
+		s_D3D = this;
 		//create swap chain
 		DXGI_SWAP_CHAIN_DESC scd;
 
@@ -64,7 +77,7 @@ namespace Themp
 		scd.BufferCount = 2;
 		scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 		scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-		
+
 		RECT windowRect;
 		GetClientRect(Themp::System::tSys->m_Window, &windowRect);
 
@@ -99,7 +112,7 @@ namespace Themp
 #ifdef _DEBUG
 		result = D3D11CreateDeviceAndSwapChain(NULL,
 			D3D_DRIVER_TYPE_HARDWARE,
-			NULL, D3D11_CREATE_DEVICE_DEBUG | D3D11_CREATE_DEVICE_BGRA_SUPPORT , featureLevels, 3,
+			NULL, D3D11_CREATE_DEVICE_DEBUG | D3D11_CREATE_DEVICE_BGRA_SUPPORT, featureLevels, 3,
 			D3D11_SDK_VERSION,
 			&scd,
 			&m_Swapchain,
@@ -116,10 +129,19 @@ namespace Themp
 			&m_DevCon);
 #endif 
 
-		
+
 		if (result != S_OK) { System::Print("Could not create D3D11 Device and/or swapchain."); return false; }
 		int fl = m_Device->GetFeatureLevel();
 		System::Print("FeatureLevel: %s", (fl == D3D_FEATURE_LEVEL_11_1 ? "11_1" : fl == D3D_FEATURE_LEVEL_11_0 ? "11_0" : "10_1"));
+
+		D3D11_FEATURE_DATA_D3D11_OPTIONS3 supportStruct;
+		m_Device->CheckFeatureSupport(D3D11_FEATURE::D3D11_FEATURE_D3D11_OPTIONS3, &supportStruct, sizeof(D3D11_FEATURE_DATA_D3D11_OPTIONS3));
+		if (!supportStruct.VPAndRTArrayIndexFromAnyShaderFeedingRasterizer)
+		{
+			System::Print("This GPU does not support 'VP And RT ArrayIndex From Any Shader Feeding Rasterizer', will fall back to slower point light rendering");
+		}
+		SupportsVPArrayIndex = supportStruct.VPAndRTArrayIndexFromAnyShaderFeedingRasterizer;
+
 
 #ifdef _DEBUG	
 		result = m_Device->QueryInterface(&m_DebugInterface);
@@ -139,16 +161,16 @@ namespace Themp
 		}
 #endif
 
-
-
-		if(!CreateRenderTextures(windowWidth, windowHeight) || !CreateBackBuffer(windowWidth, windowHeight) || !CreateDepthStencil(windowWidth, windowHeight))
+		int multisample = Themp::System::tSys->m_SVars["Multisample"];
+		if (multisample == 0) multisample = 1;
+		if (!CreateRenderTextures(windowWidth, windowHeight) || !CreateBackBuffer() || !CreateDepthStencil(windowWidth, windowHeight, multisample))
 		{
 			System::Print("Could not initialise all required resources, shutting down");
 			return false;
 		}
-		
 
-		SetViewPort(0, 0, windowWidth, windowHeight);
+
+		SetViewPort(0.0f, 0.0f, (float)windowWidth, (float)windowHeight);
 
 		//create default material's and other data
 		D3D11_SAMPLER_DESC texSamplerDesc;
@@ -175,7 +197,14 @@ namespace Themp
 		rDesc.DepthClipEnable = true; //default true
 
 		m_Device->CreateRasterizerState(&rDesc, &m_RasterizerState);
-		
+
+		rDesc.CullMode = D3D11_CULL_MODE::D3D11_CULL_FRONT;
+		m_Device->CreateRasterizerState(&rDesc, &m_ShadowRasterizerState);
+
+		rDesc.FillMode = D3D11_FILL_MODE::D3D11_FILL_WIREFRAME;
+		rDesc.CullMode = D3D11_CULL_MODE::D3D11_CULL_NONE;
+		m_Device->CreateRasterizerState(&rDesc, &m_WireframeRasterizerState);
+
 		m_DevCon->RSSetState(m_RasterizerState);
 		std::vector<std::string> defaultTextures = {
 			"DefaultDiffuse.dds",
@@ -184,128 +213,50 @@ namespace Themp
 			"",
 		};
 		std::vector<uint8_t> defaultTypes = { 1,((uint8_t)(-1)),((uint8_t)(-1)),((uint8_t)(-1)) };
-		D3D::DefaultMaterial = Resources::TRes->LoadMaterial("Deferred", defaultTextures, defaultTypes, "Deferred", true, true, false);
+		D3D::DefaultMaterial = Resources::TRes->GetMaterial("G-Buffer", defaultTextures, defaultTypes, "Deferred", true, true, false);
 
-		defaultTypes[1] = 5;
-		defaultTypes[2] = 7;
-		defaultTypes[3] = 8;
+		defaultTypes[0] = Material::DIFFUSE;
+		defaultTypes[1] = Material::NORMALS;
+		defaultTypes[2] = Material::PBR;
+		defaultTypes[3] = Material::UNKNOWN;
+		defaultTextures[0] = "DefaultDiffuse.dds";
 		defaultTextures[1] = "DefaultNormal.dds";
-		defaultTextures[2] = "DefaultSpecular.dds";
+		defaultTextures[2] = "DefaultPBR.dds";
 		defaultTextures[3] = "DefaultMisc.dds";
-		D3D::DefaultMaterialShadow = Resources::TRes->LoadMaterial("DeferredShadow", defaultTextures, defaultTypes, "DeferredShadow", true, true, true);
-		D3D::DefaultMaterialPresent = Resources::TRes->LoadMaterial("DeferredPresent", defaultTextures, defaultTypes, "DeferredPresent", true, true, false);
+		D3D::DefaultPostProcess = Resources::TRes->GetMaterial("PostProcess", "", "PostProcess", true, true, false);
+		std::vector<std::string> skyboxTextures = { "../environmentmaps/Ice_Lake_Cube_Full.dds","../environmentmaps/Ice_Lake_Cube_IBL.dds","../environmentmaps/Tucker_Wreck.dds","../environmentmaps/Tucker_Wreck_IBL.dds" };
 
-		std::vector<std::string> skyboxTextures = { "../environmentmaps/Ice_Lake_Cube_Full.dds","../environmentmaps/Ice_Lake_Cube_IBL.dds" };
-
-		D3D::DefaultMaterialSkybox = Resources::TRes->LoadMaterial("Skybox", skyboxTextures, defaultTypes, "Skybox", true, true, false);
+		D3D::DefaultMaterialSkybox = Resources::TRes->GetMaterial("Skybox", skyboxTextures, defaultTypes, "Skybox", true, true, false);
 		System::Print("D3D11 Initialisation success!");
 
 		m_FullScreenQuad = new Object3D();
+		Resources::TRes->m_3DObjects.push_back(m_FullScreenQuad);
 		m_FullScreenQuad->CreateQuad("ScreenSpace", true, true, false);
-		m_Skybox = Resources::TRes->LoadModel("Skysphere.bin");
+		m_Skybox = Resources::TRes->GetModel("Skysphere.bin", true);
 		if (m_Skybox)
 		{
 			for (size_t i = 0; i < m_Skybox->m_Meshes.size(); i++)
 			{
 				m_Skybox->m_Meshes[i]->m_Material = D3D::DefaultMaterialSkybox;
 			}
-			m_Skybox->m_Scale = XMFLOAT3(1.0,1.0,1.0);
+			m_Skybox->m_Scale = XMFLOAT3(1.0, 1.0, 1.0);
 			m_Skybox->m_Position = XMFLOAT3(0.520057f, 7.266276f, -84.555794f);
 			m_Skybox->isDirty = true;
-			//Themp::System::tSys->m_Game->m_Objects3D.push_back(m_Skybox);
 		}
 		else
 		{
 			System::Print("Skybox model not found!!");
 		}
-		m_ShadowCamera = new Camera();
-		m_ShadowCamera->SetFoV(90);
-		m_ShadowCamera->SetAspectRatio(1.0);
 
-		m_ShadowMap = new ShadowMap(8192);
-		m_DevCon->ClearDepthStencilView(m_ShadowMap->m_DepthStencilView, D3D11_CLEAR_FLAG::D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-
-		memset(&m_LightConstantBufferData, 0, sizeof(LightConstantBuffer));
-
-		///////////////Set up a Directional Light
-		{
-			m_LightConstantBufferData.numDir = 1;
-			DirectionalLight* l = &m_LightConstantBufferData.dirLights[0];
-			l->textureOffset = m_ShadowMap->ObtainTextureArea(4096);
-			shadowMaps[0].l = l;
-			shadowMaps[0].LightIsDirty = true;
-			//sponza light dir
-			//XMFLOAT3 dir = XMFLOAT3(0.621556, -0.783368, 0.001628);
-			//elemental light dir
-			XMFLOAT3 dir = Normalize(XMFLOAT3(-0.343871, -0.762444, 0.548116));
-			l->position.x = 4.258440;
-			l->position.y = 42.606735;
-			l->position.z = -98.248665;
-			l->direction = XMFLOAT4(dir.x, dir.y, dir.z, 0.0);
-			l->color = XMFLOAT4(1.0,1.0,1.0, 1);
-			RenderShadowsDirectionalLight(l);
-			l->lightviewmatrix = m_ShadowCamera->m_CameraConstantBufferData.viewMatrix;
-			l->lightprojmatrix = m_ShadowCamera->m_CameraConstantBufferData.projectionMatrix;
-
-		}
-		///////////////
-
-		///////////////Set up Point Light
-		{
-			m_LightConstantBufferData.numPoint = 1;
-			PointLight* l = &m_LightConstantBufferData.pointLights[0];
-			shadowMaps[1].l = l;
-			shadowMaps[1].LightIsDirty = true;
-			for (size_t i = 0; i < 6; i++)
-			{
-				l->textureOffset[i] = m_ShadowMap->ObtainTextureArea(1024);
-			}
-			l->position.x = 0.649892;
-			l->position.y = 5.834146;
-			l->position.z = -39.419930;
-			l->color = XMFLOAT4(0.5,0.5,0.5, 40);
-			RenderShadowsPointLight(l);
-			l->lightprojmatrix = m_ShadowCamera->m_CameraConstantBufferData.projectionMatrix;
-		}
-		///////////////
-
-		///////////////Set up Spot Light
-		{
-			m_LightConstantBufferData.numSpot = 1;
-			SpotLight* l = &m_LightConstantBufferData.spotLights[0];
-			shadowMaps[2].l = l;
-			shadowMaps[2].LightIsDirty = true;
-			l->position = XMFLOAT4(-6.579741, 9.372288 , -8.041532, 1.0);
-			l->angleMin = cos(0.2);
-			l->angleMax = cos(10);
-			l->color = XMFLOAT4(0.5, 0.5, 0.5, 1.0);
-			XMFLOAT3 dir = Normalize(XMFLOAT3(0.813769, -0.394984 ,0.426342));
-			l->direction = XMFLOAT4(dir.x,dir.y,dir.z,0);
-			l->range = 50;
-			l->textureOffset = m_ShadowMap->ObtainTextureArea(2048);
-		}
-		//////////////
+		m_ShadowUnfiltered = new ShadowUnfiltered();
+		m_ShadowPCF = new ShadowPCF();
+		m_ShadowCascade = new ShadowCascade();
+		m_ShadowVariance = new ShadowVariance();
+		m_ShadowMoment = new ShadowMoment();
 
 
-		D3D11_BUFFER_DESC cbDesc;
-		cbDesc.ByteWidth = sizeof(LightConstantBuffer);
-		cbDesc.Usage = D3D11_USAGE_DYNAMIC;
-		cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-		cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-		cbDesc.MiscFlags = 0;
-		cbDesc.StructureByteStride = 0;
-
-		// Fill in the subresource data.
-		D3D11_SUBRESOURCE_DATA InitData;
-		InitData.pSysMem = &m_LightConstantBufferData;
-		InitData.SysMemPitch = 0;
-		InitData.SysMemSlicePitch = 0;
-
-		// Create the buffer.
-		m_Device->CreateBuffer(&cbDesc, &InitData, &m_LightBuffer);
-
-		SetLightConstantBuffer(m_LightBuffer);
-		return true; 
+		SetMultiSample(multisample);
+		return true;
 	}
 
 	void D3D::ResizeWindow(int newX, int newY)
@@ -321,6 +272,8 @@ namespace Themp
 				CLEAN(m_RenderTextures[i]->m_RenderTarget);
 				CLEAN(m_RenderTextures[i]->m_ShaderResourceView);
 			}
+			CLEAN(m_MainRender->m_RenderTarget);
+			CLEAN(m_MainRender->m_ShaderResourceView);
 
 			//Recreate back buffer
 			HRESULT hr;
@@ -363,9 +316,9 @@ namespace Themp
 				renderTexDesc.Format = DXGI_FORMAT::DXGI_FORMAT_R32G32B32A32_FLOAT;
 				renderTexDesc.Height = newY;
 				renderTexDesc.Width = newX;
-			
+
 				hr = m_Device->CreateTexture2D(&renderTexDesc, nullptr, &renderTex);
-			
+
 				if (hr != S_OK) { System::Print("Could not CreateTexture2D %i", i); return; }
 				// use the back buffer address to create the render target
 				D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
@@ -374,19 +327,51 @@ namespace Themp
 				srvDesc.Texture2D.MipLevels = 1;
 				srvDesc.Texture2D.MostDetailedMip = 0;
 				srvDesc.ViewDimension = D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2D;
-			
+
 				hr = m_Device->CreateShaderResourceView(renderTex, &srvDesc, &m_RenderTextures[i]->m_ShaderResourceView);
 				if (hr != S_OK) { System::Print("Could not CreateShaderResourceView %i", i); return; }
-			
+
 				m_ShaderResourceViews[i] = m_RenderTextures[i]->m_ShaderResourceView;
-			
+
 				hr = m_Device->CreateRenderTargetView(renderTex, nullptr, &m_RenderTextures[i]->m_RenderTarget);
 				if (hr != S_OK) { System::Print("Could not CreateRenderTargetView %i", i); return; }
-			
+
 				renderTex->Release();
 				m_Rtvs[i] = m_RenderTextures[i]->m_RenderTarget;
 				m_ShaderResourceViews[i] = m_RenderTextures[i]->m_ShaderResourceView;
 			}
+
+			ID3D11Texture2D* renderTex;
+			D3D11_TEXTURE2D_DESC renderTexDesc;
+			memset(&renderTexDesc, 0, sizeof(D3D11_TEXTURE2D_DESC));
+			renderTexDesc.Usage = D3D11_USAGE_DEFAULT;
+			renderTexDesc.ArraySize = 1;
+			renderTexDesc.MipLevels = 1;
+			renderTexDesc.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_RENDER_TARGET | D3D11_BIND_FLAG::D3D11_BIND_SHADER_RESOURCE;
+			renderTexDesc.CPUAccessFlags = 0;
+			renderTexDesc.SampleDesc.Count = 1;
+			renderTexDesc.SampleDesc.Quality = 0;
+			renderTexDesc.Format = DXGI_FORMAT::DXGI_FORMAT_R32G32B32A32_FLOAT;
+			renderTexDesc.Height = newY;
+			renderTexDesc.Width = newX;
+
+			hr = m_Device->CreateTexture2D(&renderTexDesc, nullptr, &renderTex);
+
+			if (hr != S_OK) { System::Print("Could not CreateTexture2D for Main Render Target"); return; }
+			// use the back buffer address to create the render target
+			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+			memset(&srvDesc, 0, sizeof(D3D11_SHADER_RESOURCE_VIEW_DESC));
+			srvDesc.Format = renderTexDesc.Format;
+			srvDesc.Texture2D.MipLevels = 1;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+			srvDesc.ViewDimension = D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2D;
+
+			hr = m_Device->CreateShaderResourceView(renderTex, &srvDesc, &m_MainRender->m_ShaderResourceView);
+			if (hr != S_OK) { System::Print("Could not CreateShaderResourceView for Main Render Target"); return; }
+
+			hr = m_Device->CreateRenderTargetView(renderTex, nullptr, &m_MainRender->m_RenderTarget);
+			if (hr != S_OK) { System::Print("Could not CreateRenderTargetView for Main Render Target"); return; }
+			renderTex->Release();
 
 			CLEAN(m_DepthStencil);
 			CLEAN(m_DepthStencilSRV);
@@ -401,7 +386,7 @@ namespace Themp
 			depthBufferDesc.Height = newY;
 			depthBufferDesc.MipLevels = 1;
 			depthBufferDesc.ArraySize = 1;
-			depthBufferDesc.Format = DXGI_FORMAT_R24G8_TYPELESS; // DXGI_FORMAT_D16_UNORM;
+			depthBufferDesc.Format = DXGI_FORMAT_R32_TYPELESS; // DXGI_FORMAT_D16_UNORM;
 			depthBufferDesc.Usage = D3D11_USAGE_DEFAULT;
 			depthBufferDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
 			depthBufferDesc.CPUAccessFlags = 0;
@@ -414,10 +399,9 @@ namespace Themp
 
 			D3D11_DEPTH_STENCIL_VIEW_DESC descDSV;
 			memset(&descDSV, 0, sizeof(D3D11_DEPTH_STENCIL_VIEW_DESC));
-			descDSV.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			descDSV.Format = DXGI_FORMAT_D32_FLOAT;
 			descDSV.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
 			descDSV.Texture2D.MipSlice = 0;
-
 
 			// Create the depth stencil view
 			hr = m_Device->CreateDepthStencilView(m_DepthStencil, // Depth stencil texture
@@ -430,8 +414,8 @@ namespace Themp
 			}
 			D3D11_SHADER_RESOURCE_VIEW_DESC depthSRVDesc;
 			memset(&depthSRVDesc, 0, sizeof(D3D11_SHADER_RESOURCE_VIEW_DESC));
-			depthSRVDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-			depthSRVDesc.Texture2D.MipLevels = -1;
+			depthSRVDesc.Format = DXGI_FORMAT_R32_FLOAT;
+			depthSRVDesc.Texture2D.MipLevels = (uint32_t)-1;
 			depthSRVDesc.Texture2D.MostDetailedMip = 0;
 			depthSRVDesc.ViewDimension = D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2D;
 
@@ -443,111 +427,123 @@ namespace Themp
 				System::Print("Could not create Depthstencil shader resource view");
 				return;
 			}
-
-
 			//m_DevCon->OMSetRenderTargets(1, &g_pRenderTargetView, NULL);
 
 			// Set up the viewport.
 			D3D11_VIEWPORT vp;
-			vp.Width = newX;
-			vp.Height = newY;
+			vp.Width = (float)newX;
+			vp.Height = (float)newY;
 			vp.MinDepth = 0.0f;
 			vp.MaxDepth = 1.0f;
-			vp.TopLeftX = 0;
-			vp.TopLeftY = 0;
+			vp.TopLeftX = 0.0f;
+			vp.TopLeftY = 0.0f;
 			m_DevCon->RSSetViewports(1, &vp);
-			Themp::System::tSys->m_SVars["WindowSizeX"] = newX;
-			Themp::System::tSys->m_SVars["WindowSizeY"] = newY;
-			m_ConstantBufferData.screenHeight = newX;
-			m_ConstantBufferData.screenWidth = newY;
+			Themp::System::tSys->m_SVars["WindowSizeX"] = vp.Width;
+			Themp::System::tSys->m_SVars["WindowSizeY"] = vp.Height;
+			m_ConstantBufferData.screenHeight = vp.Width;
+			m_ConstantBufferData.screenWidth = vp.Height;
 			dirtySystemBuffer = true;
-
 		}
 	}
-	void D3D::RenderShadowsPointLight(PointLight* l)
+
+	//0: No Filtering
+	//1: PCF
+	//2: Cascaded
+	//3: Variance
+	//4: Moment
+	void D3D::SetShadowType(int type)
 	{
-		m_ShadowCamera->SetupCamera(XMFLOAT3(l->position.x, l->position.y, l->position.z), XMFLOAT3(1,0,0), XMFLOAT3(0, 1, 0));
-		m_ShadowCamera->m_CamType = Camera::CameraType::Perspective;
-		m_ShadowCamera->isDirty = true;
-
-		m_ShadowCamera->m_LookDirection.x = 1;
-		m_ShadowCamera->UpdateMatrices();
-		m_ShadowCamera->isDirty = true;
-		l->lightviewmatrix[0] = m_ShadowCamera->m_CameraConstantBufferData.viewMatrix;
-
-
-		m_ShadowCamera->m_LookDirection.x = -1;
-		m_ShadowCamera->UpdateMatrices();
-		m_ShadowCamera->isDirty = true;
-		l->lightviewmatrix[1] = m_ShadowCamera->m_CameraConstantBufferData.viewMatrix;
-
-
-		m_ShadowCamera->m_LookDirection.x = 0;
-		m_ShadowCamera->m_LookDirection.y = 1;
-		m_ShadowCamera->SetUpVector(1, 0, 0);
-		m_ShadowCamera->UpdateMatrices();
-		m_ShadowCamera->isDirty = true;
-		l->lightviewmatrix[2] = m_ShadowCamera->m_CameraConstantBufferData.viewMatrix; 
-
-
-		m_ShadowCamera->m_LookDirection.y = -1;
-		m_ShadowCamera->UpdateMatrices();
-		m_ShadowCamera->isDirty = true;
-		l->lightviewmatrix[3] = m_ShadowCamera->m_CameraConstantBufferData.viewMatrix;
-
-
-		m_ShadowCamera->SetUpVector(0, 1, 0);
-		m_ShadowCamera->m_LookDirection.y = 0;
-		m_ShadowCamera->m_LookDirection.z = 1;
-		m_ShadowCamera->UpdateMatrices();
-		m_ShadowCamera->isDirty = true;
-		l->lightviewmatrix[4] = m_ShadowCamera->m_CameraConstantBufferData.viewMatrix;
-
-
-		m_ShadowCamera->m_LookDirection.z = -1;
-		m_ShadowCamera->UpdateMatrices();
-		l->lightviewmatrix[5] = m_ShadowCamera->m_CameraConstantBufferData.viewMatrix;
+		m_ShadowType = type;
 	}
-	void D3D::RenderShadowsSpotLight(SpotLight* l)
+	bool D3D::SetMultiSample(int num)
 	{
-		m_ShadowCamera->SetupCamera(XMFLOAT3(l->position.x, l->position.y, l->position.z), XMFLOAT3(l->direction.x, l->direction.y, l->direction.z), XMFLOAT3(0, 1, 0));
-		m_ShadowCamera->m_CamType = Camera::CameraType::Perspective;
-		m_ShadowCamera->isDirty = true;
-		m_ShadowCamera->UpdateMatrices();
-		l->lightprojmatrix = m_ShadowCamera->m_CameraConstantBufferData.projectionMatrix;
-		l->lightviewmatrix = m_ShadowCamera->m_CameraConstantBufferData.viewMatrix;
+		if (num != 0 && num != 1 && num != 2 && num != 4 && num != 8)
+		{
+			System::Print("Multiplesample value (\"num\") has to be 0, 1, 2, 4 or 8, given: %i. Nothing has changed", num);
+			return false;
+		}
+		if (num == 0)
+		{
+			System::Print("Multisample value (\"num\") == 0, this is allowed because it's set to 1, but no real MS value of 0 exists");
+			num = 1;
+		}
+		if (m_Swapchain)
+		{
+			m_DevCon->OMSetRenderTargets(0, 0, 0);
+			dirtySystemBuffer = true;
+		}
+		else
+		{
+			return false;
+		}
+		m_ConstantBufferData.MSAAValue = num;
+		dirtySystemBuffer = true;
+
+		if (m_ShadowUnfiltered)	m_ShadowUnfiltered->SetMultiSample(num);
+		if (m_ShadowPCF)		m_ShadowPCF->SetMultiSample(num);
+		if (m_ShadowCascade)	m_ShadowCascade->SetMultiSample(num);
+		if (m_ShadowVariance)	m_ShadowVariance->SetMultiSample(num);
+		if (m_ShadowMoment)		m_ShadowMoment->SetMultiSample(num);
+
+		//mark all shadows dirty as they have to be recalculated
+		if (m_ShadowUnfiltered)	m_ShadowUnfiltered->SetDirty();
+		if (m_ShadowPCF)		m_ShadowPCF->SetDirty();
+		if (m_ShadowCascade)	m_ShadowCascade->SetDirty();
+		if (m_ShadowVariance)	m_ShadowVariance->SetDirty();
+		if (m_ShadowMoment)		m_ShadowMoment->SetDirty();
+		return true;
 	}
-	void D3D::RenderShadowsDirectionalLight(DirectionalLight* l)
+	void D3D::AddDirectionalLight(XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color, int resolution)
 	{
-		m_ShadowCamera->SetupCamera(XMFLOAT3(l->position.x, l->position.y, l->position.z), XMFLOAT3(l->direction.x, l->direction.y, l->direction.z),XMFLOAT3(0,1,0));
-		m_ShadowCamera->m_CamType = Camera::CameraType::Orthographic;
-		m_ShadowCamera->m_OrthoWidth = 150;
-		m_ShadowCamera->m_OrthoHeight = 150;
-		m_ShadowCamera->isDirty = true;
-		m_ShadowCamera->UpdateMatrices();
+		m_ShadowUnfiltered->AddDirectionalLight(pos, dir, color, resolution);
+		m_ShadowPCF->AddDirectionalLight(pos, dir, color, resolution);
+		//m_ShadowCascade->AddDirectionalLight(pos, dir, color);
+		//m_ShadowVariance->AddDirectionalLight(pos, dir, color);
+		//m_ShadowMoment->AddDirectionalLight(pos, dir, color);
+	}
+	void D3D::SetLightDirty(LightType type, int index)
+	{
+		m_ShadowUnfiltered->SetLightDirty(type, index);
+		m_ShadowPCF->SetLightDirty(type, index);
+		//m_ShadowCascade->SetLightDirty(type, index);
+		//m_ShadowVariance->SetLightDirty(type, index);
+		//m_ShadowMoment->SetLightDirty(type, index);
+	}
+	void D3D::SetDirectionalLight(int index, XMFLOAT4 pos , XMFLOAT4 dir, XMFLOAT4 color)
+	{
+		m_ShadowUnfiltered->SetDirectionalLight(index, pos, dir, color);
+		m_ShadowPCF->SetDirectionalLight(index, pos, dir, color);
+		//m_ShadowCascade->SetDirectionalLight(index, pos, dir, color);
 	}
 	void D3D::DrawGBufferPass(Game & game)
 	{
 		Themp::D3D& _this = *static_cast<Themp::D3D*>(this);
-
+		if (m_Wireframe)
+		{
+			m_DevCon->RSSetState(m_WireframeRasterizerState);
+		}
+		else
+		{
+			m_DevCon->RSSetState(m_RasterizerState);
+		}
 		m_DevCon->OMSetRenderTargets(NUM_RENDER_TEXTURES, m_Rtvs, m_DepthStencilView);
 		m_DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		m_DevCon->IASetInputLayout(D3D::DefaultMaterial->m_InputLayout); //skybox layout doesn't differ so this is fine
 
 
 		//Skybox
-		m_DevCon->OMSetDepthStencilState(m_SkyboxDeptStencilState, 1);
-		m_DevCon->PSSetShaderResources(0, 1, D3D::DefaultMaterialSkybox->m_Views);
+		m_DevCon->OMSetDepthStencilState(m_SkyboxDepthStencilState, 1);
+		m_DevCon->PSSetShaderResources(0, 2, D3D::DefaultMaterialSkybox->m_Views);
 		m_DevCon->PSSetShader(D3D::DefaultMaterialSkybox->m_PixelShader, 0, 0);
 		m_DevCon->VSSetShader(D3D::DefaultMaterialSkybox->m_VertexShader, 0, 0);
 		m_DevCon->GSSetShader(D3D::DefaultMaterialSkybox->m_GeometryShader, 0, 0);
 
-		m_Skybox->m_Position = game.m_Camera->m_Position;
+		m_Skybox->m_Position = game.m_Camera->GetPosition();
 		m_Skybox->isDirty = true;
 		m_Skybox->Draw(_this, false);
 
 		//Models
-		m_DevCon->OMSetDepthStencilState(m_DeptStencilState, 1);
+		m_DevCon->OMSetDepthStencilState(m_DepthStencilState, 1);
 		m_DevCon->PSSetShaderResources(0, 4, D3D::DefaultMaterial->m_Views);
 		m_DevCon->PSSetShader(D3D::DefaultMaterial->m_PixelShader, 0, 0);
 		m_DevCon->VSSetShader(D3D::DefaultMaterial->m_VertexShader, 0, 0);
@@ -562,122 +558,66 @@ namespace Themp
 	Camera* shadowCamera; 
 	void D3D::DrawShadowMaps(Themp::Game& game)
 	{
-		//PointLight* l = &m_LightConstantBufferData.pointLights[0];
-		//l->position.x = sin(frame / 20.0f) * 10;
-		//shadowMaps[1].LightIsDirty = true;
-
-		m_DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		m_DevCon->IASetInputLayout(D3D::DefaultMaterial->m_InputLayout);
-
-		//m_DevCon->ClearDepthStencilView(m_ShadowMap->m_DepthStencilView, D3D11_CLEAR_FLAG::D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-		m_DevCon->OMSetRenderTargets(0, nullptr, m_ShadowMap->m_DepthStencilView);
-		//ConstantBuffers:
-		//0 = SystemBuffer
-		//1 = ObjectBuffer
-		//2 = LightBuffer
-
-		Themp::D3D& _this = *static_cast<Themp::D3D*>(this);
-		D3D::ConstantBuffers[2] = m_LightBuffer;
-
-		for (size_t i = 0; i < m_LightConstantBufferData.numDir; i++)
+		switch (m_ShadowType)
 		{
-			LightShadowMap* s = &shadowMaps[i];
-			if (s->LightIsDirty)
-			{
-				//m_DevCon->ClearDepthStencilView(s->tex->m_DepthStencilView, D3D11_CLEAR_FLAG::D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-				//m_DevCon->OMSetRenderTargets(0, nullptr, s->tex->m_DepthStencilView);
-				DirectionalLight* l = &m_LightConstantBufferData.dirLights[i];
-				SetViewPort(l->textureOffset.x, l->textureOffset.y, l->textureOffset.z, l->textureOffset.w);
-
-				m_DevCon->PSSetShader(D3D::DefaultMaterialShadow->m_PixelShader, 0, 0);
-				m_DevCon->VSSetShader(D3D::DefaultMaterialShadow->m_VertexShader, 0, 0);
-				m_DevCon->GSSetShader(nullptr, 0, 0);
-
-				RenderShadowsDirectionalLight(l);
-				l->lightviewmatrix = m_ShadowCamera->m_CameraConstantBufferData.viewMatrix;
-				l->lightprojmatrix = m_ShadowCamera->m_CameraConstantBufferData.projectionMatrix;
-				for (int j = 0; j < game.m_Objects3D.size(); ++j)
-				{
-					game.m_Objects3D[j]->Draw(_this, true);
-				}
-				s->LightIsDirty = false;
-			}
-		}
-		GSUploadConstantBuffersToGPU();
-		for (size_t i = 0; i < m_LightConstantBufferData.numPoint; i++)
-		{
-			int shadowMapIndex = m_LightConstantBufferData.numDir + i;
-			LightShadowMap* s = &shadowMaps[shadowMapIndex];
-			if (s->LightIsDirty)
-			{
-				//m_DevCon->ClearDepthStencilView(s->tex->m_DepthStencilView, D3D11_CLEAR_FLAG::D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-				PointLight* l = &m_LightConstantBufferData.pointLights[i];
-				D3D11_VIEWPORT vps[6];
-				for (size_t j = 0; j < 6; j++)
-				{
-					vps[j].TopLeftX = l->textureOffset[j].x;
-					vps[j].TopLeftY = l->textureOffset[j].y;
-					vps[j].Width = l->textureOffset[j].z;
-					vps[j].Height = l->textureOffset[j].w;
-					vps[j].MinDepth = 0.0f;
-					vps[j].MaxDepth = 1.0f;
-				}
-				m_DevCon->RSSetViewports(6, &vps[0]);
-				m_DevCon->PSSetShader(D3D::DefaultMaterialShadow->m_PixelShader, 0, 0);
-				m_DevCon->VSSetShader(D3D::DefaultMaterialShadow->m_VertexShader, 0, 0);
-				m_DevCon->GSSetShader(D3D::DefaultMaterialShadow->m_GeometryShader, 0, 0);
-				RenderShadowsPointLight(l);
-
-				for (int j = 0; j < game.m_Objects3D.size(); ++j)
-				{
-					game.m_Objects3D[j]->Draw(_this, true);
-				}
-				s->LightIsDirty = false;
-			}
-		}
-		GSUploadConstantBuffersToGPUNull();
-		for (size_t i = 0; i < m_LightConstantBufferData.numSpot; i++)
-		{
-			int shadowMapIndex = m_LightConstantBufferData.numPoint + m_LightConstantBufferData.numDir + i;
-			LightShadowMap* s = &shadowMaps[shadowMapIndex];
-			if (s->LightIsDirty)
-			{
-				m_DevCon->PSSetShader(D3D::DefaultMaterialShadow->m_PixelShader, 0, 0);
-				m_DevCon->VSSetShader(D3D::DefaultMaterialShadow->m_VertexShader, 0, 0);
-				m_DevCon->GSSetShader(nullptr, 0, 0);
-				SpotLight* l = &m_LightConstantBufferData.spotLights[i];
-				SetViewPort(l->textureOffset.x, l->textureOffset.y, l->textureOffset.z, l->textureOffset.w);
-				RenderShadowsSpotLight(l);
-
-				for (int j = 0; j < game.m_Objects3D.size(); ++j)
-				{
-					game.m_Objects3D[j]->Draw(_this, true);
-				}
-				s->LightIsDirty = false;
-			}
+		case 0:
+			m_ShadowUnfiltered->DrawShadow();
+			break;
+		case 1:
+			m_ShadowPCF->DrawShadow();
+			break;
+		case 2:
+			m_ShadowCascade->DrawShadow();
+			break;
+		case 3:
+			m_ShadowVariance->DrawShadow();
+			break;
+		case 4:
+			m_ShadowMoment->DrawShadow();
+			break;
 		}
 	}
 	void D3D::DrawLightPass()
 	{
-		m_DevCon->PSSetShader(D3D::DefaultMaterialPresent->m_PixelShader, 0, 0);
-		m_DevCon->VSSetShader(D3D::DefaultMaterialPresent->m_VertexShader, 0, 0);
-		m_DevCon->GSSetShader(D3D::DefaultMaterialPresent->m_GeometryShader, 0, 0);
+		switch (m_ShadowType)
+		{
+		case 0:
+			m_ShadowUnfiltered->DrawLight();
+			break;
+		case 1:
+			m_ShadowPCF->DrawLight();
+			break;
+		case 2:
+			m_ShadowCascade->DrawLight();
+			break;
+		case 3:
+			m_ShadowVariance->DrawLight();
+			break;
+		case 4:
+			m_ShadowMoment->DrawLight();
+			break;
+		}
+	}
+	void D3D::DrawPostProcess()
+	{
+		m_DevCon->RSSetState(m_RasterizerState);
+		m_DevCon->PSSetShader(D3D::DefaultPostProcess->m_PixelShader, 0, 0);
+		m_DevCon->VSSetShader(D3D::DefaultPostProcess->m_VertexShader, 0, 0);
+		m_DevCon->GSSetShader(D3D::DefaultPostProcess->m_GeometryShader, 0, 0);
 
 		SetViewPort(0, 0, m_ConstantBufferData.screenWidth, m_ConstantBufferData.screenHeight);
 		//m_DevCon->OMSetRenderTargets(1, &m_BackBuffer, m_DepthStencilView);
 		m_DevCon->OMSetRenderTargets(1, &m_BackBuffer, nullptr);
-		m_DevCon->PSSetSamplers(0, 4, D3D::DefaultMaterialPresent->m_SamplerStates);
+		m_DevCon->PSSetSamplers(0, 4, D3D::DefaultPostProcess->m_SamplerStates);
 
 		for (size_t i = 0; i < NUM_RENDER_TEXTURES; i++)
 		{
 			m_ShaderResourceViews[i] = m_RenderTextures[i]->m_ShaderResourceView;
 		}
 		m_ShaderResourceViews[NUM_RENDER_TEXTURES] = m_DepthStencilSRV;
-		m_ShaderResourceViews[NUM_RENDER_TEXTURES + 1] = m_ShadowMap->m_ShaderResourceView;
-		m_ShaderResourceViews[NUM_RENDER_TEXTURES + 2] = DefaultMaterialSkybox->m_Textures[0]->m_View;
-		m_ShaderResourceViews[NUM_RENDER_TEXTURES + 3] = DefaultMaterialSkybox->m_Textures[1]->m_View;
+		m_ShaderResourceViews[NUM_RENDER_TEXTURES+1] = m_MainRender->m_ShaderResourceView;
 
-		m_DevCon->PSSetShaderResources(0, NUM_SHADER_RESOURCE_VIEWS, m_ShaderResourceViews);
+		m_DevCon->PSSetShaderResources(0, NUM_RENDER_TEXTURES + 2, m_ShaderResourceViews);
 
 
 		// draw fullscreen quad, manually
@@ -685,12 +625,9 @@ namespace Themp
 		uint32_t offset[] = { 0 };
 		m_DevCon->IASetVertexBuffers(0, 1, &m_FullScreenQuad->m_Meshes[0]->m_VertexBuffer, stride, offset);
 		m_DevCon->IASetIndexBuffer(m_FullScreenQuad->m_Meshes[0]->m_IndexBuffer, DXGI_FORMAT_R32_UINT, 0);
-		m_DevCon->IASetInputLayout(D3D::DefaultMaterialPresent->m_InputLayout);
+		m_DevCon->IASetInputLayout(D3D::DefaultPostProcess->m_InputLayout);
 
-		m_DevCon->PSSetSamplers(0, 4, D3D::DefaultMaterialPresent->m_SamplerStates);
-		SetSystemConstantBuffer(m_CBuffer); 
-		Themp::System::tSys->m_Game->m_Camera->UpdateMatrices();
-		SetLightConstantBuffer(m_LightBuffer);
+		SetSystemConstantBuffer(m_CBuffer);
 		PSUploadConstantBuffersToGPU();
 
 		m_DevCon->DrawIndexed(m_FullScreenQuad->m_Meshes[0]->numIndices, 0, 0);
@@ -703,15 +640,18 @@ namespace Themp
 			m_DevCon->ClearRenderTargetView(m_RenderTextures[i]->m_RenderTarget, ClearColor);
 		}
 		m_DevCon->ClearRenderTargetView(m_BackBuffer, ClearColor);
-		m_DevCon->ClearDepthStencilView(m_DepthStencilView, D3D11_CLEAR_FLAG::D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+		m_DevCon->ClearDepthStencilView(m_DepthStencilView, D3D11_CLEAR_FLAG::D3D11_CLEAR_DEPTH, 1.0f, 0);
 
 		//Draw all geometry to the GBuffer //positions, normals, etc
 		DrawGBufferPass(game);
 
+		//If there are any dirty lights, render the shadow maps for those lights
 		DrawShadowMaps(game);
 
 		//Draw everything to a fullscreen quad, while calculating lighting 
 		DrawLightPass();
+
+		DrawPostProcess();
 
 		//set stuff back to prevent issues next draw
 		VSUploadConstantBuffersToGPUNull();
@@ -722,11 +662,6 @@ namespace Themp
 			m_ShaderResourceViews[i] = nullptr;
 		}
 		m_DevCon->PSSetShaderResources(0, NUM_SHADER_RESOURCE_VIEWS, m_ShaderResourceViews);
-
-		D3D11_MAPPED_SUBRESOURCE ms;
-		m_DevCon->Map(m_LightBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
-		memcpy(ms.pData, &m_LightConstantBufferData, sizeof(LightConstantBuffer));
-		m_DevCon->Unmap(m_LightBuffer, NULL);
 	}
 	void D3D::DrawImGUI()
 	{
@@ -743,7 +678,6 @@ namespace Themp
 			m_Swapchain->SetFullscreenState(FALSE, NULL);  // switch to windowed mode
 		}
 		CLEAN(m_CBuffer);
-		CLEAN(m_LightBuffer);
 		CLEAN(D3D::ConstantBuffers[0]);
 		CLEAN(D3D::ConstantBuffers[1]);
 		CLEAN(D3D::ConstantBuffers[2]);
@@ -753,20 +687,27 @@ namespace Themp
 		{
 			delete m_RenderTextures[i];
 		}
+		delete m_MainRender;
 		VSUploadConstantBuffersToGPUNull();
 		PSUploadConstantBuffersToGPUNull();
 		GSUploadConstantBuffersToGPUNull();
 
-		delete m_ShadowCamera;
-		delete m_ShadowMap;
+		delete m_ShadowUnfiltered;
+		delete m_ShadowPCF;
+		delete m_ShadowCascade;
+		delete m_ShadowVariance;
+		delete m_ShadowMoment;
 
 		CLEAN(m_OMBlendState);
 		CLEAN(m_DepthStencil);
 		CLEAN(m_DepthStencilView);
-		CLEAN(m_DeptStencilState);
-		CLEAN(m_SkyboxDeptStencilState);
+		CLEAN(m_DepthStencilState);
+		CLEAN(m_SkyboxDepthStencilState);
+		CLEAN(m_ShadowClearDepthStencilState);
 		CLEAN(m_DepthStencilSRV);
 		CLEAN(m_RasterizerState);
+		CLEAN(m_ShadowRasterizerState);
+		CLEAN(m_WireframeRasterizerState);
 		CLEAN(m_InputLayout);
 		CLEAN(m_Swapchain);
 		CLEAN(m_BackBuffer);
@@ -853,7 +794,7 @@ namespace Themp
 	{
 		m_DevCon->GSSetConstantBuffers(0, 5, D3D::ConstantBuffers);
 	}
-	bool D3D::CreateBackBuffer(int width, int height)
+	bool D3D::CreateBackBuffer()
 	{
 		HRESULT result;
 		////get back buffer
@@ -861,6 +802,10 @@ namespace Themp
 		result = m_Swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer);
 		if (result != S_OK) { System::Print("Could not obtain BackBuffer"); return false; }
 		// use the back buffer address to create the render target
+		D3D11_RENDER_TARGET_VIEW_DESC RTVDesc;
+		ZeroMemory(&RTVDesc, sizeof(D3D11_RENDER_TARGET_VIEW_DESC));
+		RTVDesc.Format = DXGI_FORMAT::DXGI_FORMAT_R32G32B32A32_FLOAT;
+		RTVDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 		result = m_Device->CreateRenderTargetView(pBackBuffer, NULL, &m_BackBuffer);
 		if (result != S_OK) { System::Print("Could not create Render target (BackBuffer)"); return false; }
 		pBackBuffer->Release();
@@ -868,39 +813,20 @@ namespace Themp
 	}
 	bool D3D::CreateRenderTextures(int width, int height)
 	{
-		HRESULT result;
 		for (int i = 0; i < NUM_RENDER_TEXTURES; i++)
 		{
-			m_RenderTextures[i] = new RenderTexture(width,height,RenderTexture::RenderTex);
+			m_RenderTextures[i] = new RenderTexture(width,height,RenderTexture::RenderTex, 1);
 			m_ShaderResourceViews[i] = m_RenderTextures[i]->m_ShaderResourceView;
 			m_Rtvs[i] = m_RenderTextures[i]->m_RenderTarget;
 		}
+		m_MainRender = new RenderTexture(width, height, RenderTexture::RenderTex, 1);
 		return true;
 	}
-	bool D3D::CreateDepthStencil(int width, int height)
+	bool D3D::CreateDepthStencil(int width, int height,int multisample)
 	{
 		HRESULT result;
-
-		D3D11_TEXTURE2D_DESC depthBufferDesc;
-		ZeroMemory(&depthBufferDesc, sizeof(D3D11_TEXTURE2D_DESC));
-		depthBufferDesc.SampleDesc.Count = 1;
-		depthBufferDesc.SampleDesc.Quality = 0;
-
-		depthBufferDesc.Width = width;
-		depthBufferDesc.Height = height;
-		depthBufferDesc.MipLevels = 1;
-		depthBufferDesc.ArraySize = 1;
-		depthBufferDesc.Format = DXGI_FORMAT_R24G8_TYPELESS; // DXGI_FORMAT_D16_UNORM;
-		depthBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-		depthBufferDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
-		depthBufferDesc.CPUAccessFlags = 0;
-		depthBufferDesc.MiscFlags = 0;
-		result = m_Device->CreateTexture2D(&depthBufferDesc, NULL, &m_DepthStencil);
-		if (result != S_OK)
-		{
-			System::Print("Could not create Depthstencil texture");
-			return false;
-		}
+		SetMultiSample(multisample);
+		
 		D3D11_DEPTH_STENCIL_DESC dsDesc;
 
 		// Depth test parameters
@@ -909,7 +835,7 @@ namespace Themp
 		dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
 
 		// Stencil test parameters
-		dsDesc.StencilEnable = true;
+		dsDesc.StencilEnable = false;
 		dsDesc.StencilReadMask = 0xFF;
 		dsDesc.StencilWriteMask = 0xFF;
 
@@ -926,13 +852,13 @@ namespace Themp
 		dsDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
 
 		// Create depth stencil state
-		result = m_Device->CreateDepthStencilState(&dsDesc, &m_DeptStencilState);
+		result = m_Device->CreateDepthStencilState(&dsDesc, &m_DepthStencilState);
 		if (result != S_OK)
 		{
 			System::Print("Could not create Depthstencil state");
 			return false;
 		}
-		m_DevCon->OMSetDepthStencilState(m_DeptStencilState, 1);
+		m_DevCon->OMSetDepthStencilState(m_DepthStencilState, 1);
 
 		
 		D3D11_DEPTH_STENCIL_DESC dssDesc;
@@ -940,50 +866,30 @@ namespace Themp
 		dssDesc.DepthEnable = true;
 		dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
 		dssDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-		result = m_Device->CreateDepthStencilState(&dssDesc, &m_SkyboxDeptStencilState);
+		result = m_Device->CreateDepthStencilState(&dssDesc, &m_SkyboxDepthStencilState);
 		if (result != S_OK)
 		{
 			System::Print("Could not create Skybox Depthstencil state");
 			return false;
 		}
 
+		ZeroMemory(&dssDesc, sizeof(D3D11_DEPTH_STENCIL_DESC));
+		dssDesc.DepthEnable = true;
+		dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		dssDesc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+		dssDesc.StencilEnable = false;
+		dssDesc.StencilReadMask = 0xFF;
+		dssDesc.StencilWriteMask = 0xFF;
 
-
-		D3D11_DEPTH_STENCIL_VIEW_DESC descDSV;
-		memset(&descDSV, 0, sizeof(D3D11_DEPTH_STENCIL_VIEW_DESC));
-		descDSV.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-		descDSV.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-		descDSV.Texture2D.MipSlice = 0;
-
-
-		// Create the depth stencil view
-		result = m_Device->CreateDepthStencilView(m_DepthStencil, // Depth stencil texture
-			&descDSV, // Depth stencil desc
-			&m_DepthStencilView);  // [out] Depth stencil view
+		result = m_Device->CreateDepthStencilState(&dssDesc, &m_ShadowClearDepthStencilState);
 		if (result != S_OK)
 		{
-			System::Print("Could not create Depthstencil view");
+			System::Print("Could not create ShadowClear Depthstencil state");
 			return false;
 		}
-		D3D11_SHADER_RESOURCE_VIEW_DESC depthSRVDesc;
-		memset(&depthSRVDesc, 0, sizeof(D3D11_SHADER_RESOURCE_VIEW_DESC));
-		depthSRVDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-		depthSRVDesc.Texture2D.MipLevels = -1;
-		depthSRVDesc.Texture2D.MostDetailedMip = 0;
-		depthSRVDesc.ViewDimension = D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2D;
-
-		result = m_Device->CreateShaderResourceView(m_DepthStencil, // Depth stencil texture
-			&depthSRVDesc, // Depth stencil desc
-			&m_DepthStencilSRV);  // [out] Depth stencil view
-		if (result != S_OK)
-		{
-			System::Print("Could not create Depthstencil shader resource view");
-			return false;
-		}
-
 		return true;
 	}
-	void D3D::PrepareSystemBuffer(Themp::Game& game)
+	void D3D::PrepareSystemBuffer()
 	{
 		SetSystemConstantBuffer(m_CBuffer);
 		if (!dirtySystemBuffer)return;

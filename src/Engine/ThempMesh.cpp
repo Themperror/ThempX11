@@ -1,6 +1,8 @@
 #include "ThempSystem.h"
 #include "ThempMesh.h"
 #include "ThempD3D.h"
+#include "ThempResources.h"
+#include "ThempMaterial.h"
 #include <d3d10.h>
 #include <d3d11.h>
 namespace Themp
@@ -12,84 +14,22 @@ namespace Themp
 
 	Mesh::~Mesh()
 	{
-		if (m_VertexBuffer)
-		{
-			m_VertexBuffer->Release();
-			m_VertexBuffer = nullptr;
-		}
-		if (m_IndexBuffer)
-		{
-			m_IndexBuffer->Release();
-			m_IndexBuffer = nullptr;
-		}
 		delete[] vertices;
+		vertices = nullptr;
 		delete[] indices;
+		indices = nullptr;
 		m_Material = nullptr;
-
+		m_VertexBuffer = nullptr;
+		m_IndexBuffer = nullptr;
 	}
 	void Mesh::ConstructVertexBuffer()
 	{
-		if (m_VertexBuffer)
-		{
-			m_VertexBuffer->Release();
-			m_VertexBuffer = nullptr;
-		}
-		if (m_IndexBuffer)
-		{
-			m_IndexBuffer->Release();
-			m_IndexBuffer = nullptr;
-		}
-
-		Themp::D3D* d = Themp::System::tSys->m_D3D;
-		D3D11_BUFFER_DESC bd;
-		D3D11_MAPPED_SUBRESOURCE ms;
-		ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
-		ZeroMemory(&ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
-
-		//set up for vertices
-		bd.Usage = D3D11_USAGE_DYNAMIC;
-		bd.ByteWidth = sizeof(Vertex) * numVertices;
-		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-		bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-		HRESULT res = d->m_Device->CreateBuffer(&bd, NULL, &m_VertexBuffer);
-
-		d->m_DevCon->Map(m_VertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
-		memcpy(ms.pData, vertices, sizeof(Vertex)*numVertices);
-		d->m_DevCon->Unmap(m_VertexBuffer, NULL);
-
-		ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
-		ZeroMemory(&ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
-		//set up for indices
-		bd.Usage = D3D11_USAGE_DYNAMIC;
-		bd.ByteWidth = sizeof(uint32_t) * numIndices;
-		bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-		bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-		res = d->m_Device->CreateBuffer(&bd, NULL, &m_IndexBuffer);
-
-		d->m_DevCon->Map(m_IndexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
-		memcpy(ms.pData, indices, sizeof(uint32_t)*numIndices);
-		d->m_DevCon->Unmap(m_IndexBuffer, NULL);
+		i_VertexBuffer = Themp::Resources::TRes->CreateVertexBuffer(vertices, numVertices);
+		i_IndexBuffer = Themp::Resources::TRes->CreateIndexBuffer(indices, numIndices);
+		m_VertexBuffer = Themp::Resources::TRes->m_VertexBuffers[i_VertexBuffer];
+		m_IndexBuffer = Themp::Resources::TRes->m_IndexBuffers[i_VertexBuffer];
 	}
-	void Mesh::SetGPUData(Themp::D3D& d3d)
-	{
-		//set shader from material
-		//d3d.m_DevCon->VSSetShader(m_Material->m_VertexShader, 0, 0);
-		//d3d.m_DevCon->PSSetShader(m_Material->m_PixelShader, 0, 0);
-		//if (m_Material->m_GeometryShader)
-		//{
-		//	d3d.m_DevCon->GSSetShader(m_Material->m_GeometryShader, 0, 0);
-		//}
-		//else
-		//{
-		//	d3d.m_DevCon->GSSetShader(nullptr, 0, 0);
-		//}
-
-		
-		//m_DevCon->GSSetConstantBuffers(0, 1, &m_CBuffer);
-		
-	}
+	
 	void Mesh::Draw(Themp::D3D& d3d, bool lightPass)
 	{
 		uint32_t stride[] = { sizeof(Vertex) };

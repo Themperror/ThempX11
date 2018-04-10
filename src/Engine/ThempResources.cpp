@@ -3,6 +3,7 @@
 #include "ThempD3D.h"
 #include "ThempObject3D.h"
 #include "ThempMesh.h"
+#include "ThempMaterial.h"
 
 #include <DDSTextureLoader.h>
 
@@ -17,41 +18,70 @@ namespace Themp
 	Resources::Resources()
 	{
 		Resources::TRes = this;
+		m_VertexBuffers.push_back(0);
+		m_IndexBuffers.push_back(0);
 	}
 	Resources::~Resources()
 	{
-		for each (auto i in m_VertexShaders)
+		for (auto i : m_VertexShaders)
 		{
 			i.second->Release();
 			i.second = nullptr;
 		}
 		m_VertexShaders.clear();
-		for each (auto i in m_PixelShaders)
+
+		for (auto i : m_PixelShaders)
 		{
 			i.second->Release();
 			i.second = nullptr;
 		}
 		m_PixelShaders.clear();
-		for each (auto i in m_GeometryShaders)
+
+		for (auto i : m_GeometryShaders)
 		{
 			i.second->Release();
 			i.second = nullptr;
 		}
 		m_GeometryShaders.clear();
 		
-		for each (auto i in m_Textures)
+		for (auto i : m_Textures)
 		{
 			delete i.second;
 			i.second = nullptr;
 		}
 		m_Textures.clear();
-		for each (auto i in m_Materials)
+
+		for (auto i : m_Materials)
 		{
 			delete i.second;
 			i.second = nullptr;
 		}
 		m_Materials.clear();
-		for each (auto i in m_3DObjects)
+
+		for (auto i : m_VertexBuffers)
+		{
+			if (i == 0)continue;
+			i->Release();
+			i = nullptr;
+		}
+		m_VertexBuffers.clear();
+
+		for (auto i : m_IndexBuffers)
+		{
+			if (i == 0)continue;
+			i->Release();
+			i = nullptr;
+		}
+		m_IndexBuffers.clear();
+
+		for (auto i : m_Meshes)
+		{
+			delete i;
+			i = nullptr;
+		}
+		m_Meshes.clear();
+
+		for (auto i : m_3DObjects)
 		{
 			delete i;
 			i = nullptr;
@@ -65,7 +95,7 @@ namespace Themp
 		std::ifstream ifs(path, std::ios::binary | std::ios::ate);
 		if (!ifs.good()) return nullptr;
 		std::ifstream::pos_type pos = ifs.tellg();
-		int length = pos;
+		size_t length = static_cast<size_t>(pos);
 		D3D10CreateBlob(length, &nBlob);
 		ifs.seekg(0, std::ios::beg);
 		ifs.read((char*)nBlob->GetBufferPointer(), length);
@@ -95,10 +125,6 @@ namespace Themp
 			return GetTexture("DefaultDiffuse.dds", true); 
 		}
 
-		//tex->width = FreeImage_GetWidth(loadedImage);
-		//tex->height = FreeImage_GetHeight(loadedImage);
-		//tex->data = FreeImage_GetBits(loadedImage);
-
 		m_Textures[basePath] = tex;
 		return tex;
 	}
@@ -125,6 +151,109 @@ namespace Themp
 		m_Textures[basePath] = tex;
 		return tex;
 	}
+	Themp::Material* Resources::GetMaterial(std::string materialName, std::string texture, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED, int numElements, bool multisample)
+	{
+		std::unordered_map<std::string, Themp::Material*>::iterator s = m_Materials.find(materialName);
+		if (s != m_Materials.end()) return s->second;
+		return LoadMaterial(materialName, texture, shaderPath, vertexShader, pixelShader, geometryShader, nonDefaultIED, numElements, multisample);
+	}
+	Themp::Material* Resources::GetMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, bool multisample)
+	{
+		std::unordered_map<std::string, Themp::Material*>::iterator s = m_Materials.find(materialName);
+		if (s != m_Materials.end()) return s->second;
+		return LoadMaterial(materialName, textures, textureTypes, shaderPath, vertexShader, pixelShader, geometryShader, multisample);
+	}
+	Themp::Object3D* Resources::GetModel(std::string path, bool uniqueMesh)
+	{
+		std::unordered_map<std::string, Themp::Object3D*>::iterator s = m_Models.find(path);
+		if (s != m_Models.end())
+		{
+			//clone the model
+			Object3D* source = s->second;
+			Object3D* clone = new Object3D(*source);
+			clone->m_ConstantBuffer = nullptr;
+
+			if (uniqueMesh)
+			{
+				clone->m_Meshes.clear();
+				for (size_t i = 0; i < source->m_Meshes.size(); i++)
+				{
+					Mesh* srcMesh = source->m_Meshes[i];
+					Mesh* newMesh = new Mesh(*source->m_Meshes[i]);
+					m_Meshes.push_back(newMesh);
+					newMesh->indices = new uint32_t[srcMesh->numIndices];
+					memcpy(newMesh->indices, srcMesh->indices, sizeof(uint32_t)*srcMesh->numIndices);
+					newMesh->vertices = new Vertex[srcMesh->numVertices];
+					memcpy(newMesh->vertices, srcMesh->vertices, sizeof(Vertex)*srcMesh->numVertices);
+					newMesh->numIndices = srcMesh->numIndices;
+					newMesh->numVertices = srcMesh->numVertices;
+					newMesh->ConstructVertexBuffer();
+					clone->m_Meshes.push_back(newMesh);
+				}
+			}
+			else
+			{
+				clone->m_Meshes = source->m_Meshes;
+			}
+			m_3DObjects.push_back(clone);
+			return clone;
+		}
+		Object3D* newObject = LoadModel(path);
+		m_3DObjects.push_back(newObject);
+		return newObject;
+	}
+	size_t Resources::CreateVertexBuffer(Vertex* vertices, size_t numVertices)
+	{
+		Themp::D3D* d = Themp::System::tSys->m_D3D;
+		D3D11_BUFFER_DESC bd;
+		D3D11_MAPPED_SUBRESOURCE ms;
+		ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
+		ZeroMemory(&ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
+
+		//set up for vertices
+		bd.Usage = D3D11_USAGE_DYNAMIC;
+		bd.ByteWidth = sizeof(Vertex) * numVertices;
+		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+		ID3D11Buffer* vertexBuffer;
+		HRESULT res = d->m_Device->CreateBuffer(&bd, NULL, &vertexBuffer);
+		if (res == S_OK)
+		{
+			d->m_DevCon->Map(vertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
+			memcpy(ms.pData, vertices, sizeof(Vertex)*numVertices);
+			d->m_DevCon->Unmap(vertexBuffer, NULL);
+			m_VertexBuffers.push_back(vertexBuffer);
+			return m_VertexBuffers.size() - 1;
+		}
+		return 0;
+	}
+	size_t Resources::CreateIndexBuffer(uint32_t* indices, size_t numIndices)
+	{
+		Themp::D3D* d = Themp::System::tSys->m_D3D;
+		HRESULT res;
+
+		D3D11_BUFFER_DESC bd;
+		D3D11_MAPPED_SUBRESOURCE ms;
+		ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
+		ZeroMemory(&ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
+		//set up for indices
+		bd.Usage = D3D11_USAGE_DYNAMIC;
+		bd.ByteWidth = sizeof(uint32_t) * numIndices;
+		bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+		bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		ID3D11Buffer* indexBuffer;
+		res = d->m_Device->CreateBuffer(&bd, NULL, &indexBuffer);
+		if (res == S_OK)
+		{
+			d->m_DevCon->Map(indexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
+			memcpy(ms.pData, indices, sizeof(uint32_t)*numIndices);
+			d->m_DevCon->Unmap(indexBuffer, NULL);
+			m_IndexBuffers.push_back(indexBuffer);
+			return m_IndexBuffers.size() - 1;
+		}
+		return 0;
+	}
 	ID3D11VertexShader * Resources::GetVertexShader(std::string name)
 	{
 		std::string basePath = BASE_SHADER_PATH;
@@ -137,7 +266,7 @@ namespace Themp
 		ID3D11VertexShader* vShader = nullptr;
 		ID3D10Blob* VSRaw = ReadToBlob(basePath);
 		result = System::tSys->m_D3D->m_Device->CreateVertexShader(VSRaw->GetBufferPointer(), VSRaw->GetBufferSize(), nullptr, &vShader);
-		if (result != S_OK) { System::Print("Could not create default vertex shader from: %s",name.c_str()); return nullptr; }
+		if (result != S_OK) { System::Print("Could not create default vertex shader from: %s", name.c_str()); return nullptr; }
 		m_VertexShaders[basePath] = vShader;
 
 		return vShader;
@@ -154,7 +283,7 @@ namespace Themp
 		ID3D11PixelShader* pShader = nullptr;
 		ID3D10Blob* PSRaw = ReadToBlob(basePath);
 		result = System::tSys->m_D3D->m_Device->CreatePixelShader(PSRaw->GetBufferPointer(), PSRaw->GetBufferSize(), nullptr, &pShader);
-		if (result != S_OK) { System::Print("Could not create default vertex shader from: %s", name.c_str() ); return nullptr; }
+		if (result != S_OK) { System::Print("Could not create default pixel shader from: %s", name.c_str() ); return nullptr; }
 		m_PixelShaders[basePath] = pShader;
 
 		return pShader;
@@ -175,9 +304,13 @@ namespace Themp
 
 		return gShader;
 	}
-	Themp::Material* Resources::LoadMaterial(std::string materialName, std::string texture, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED, int numElements)
+	Themp::Material* Resources::LoadMaterial(std::string materialName, std::string texture, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED, int numElements, bool multisample)
 	{
 		std::string tempPath = shaderPath;
+
+		std::unordered_map<std::string, Material*>::iterator s = m_Materials.find(materialName);
+		if (s != m_Materials.end()) return s->second;
+
 		Material* material = new Themp::Material();
 		if (vertexShader)
 		{
@@ -214,11 +347,21 @@ namespace Themp
 		{
 			tempPath = shaderPath;
 #ifdef _DEBUG
-			tempPath.append("_PS_d.cso");
+			tempPath.append("_PS");
+			if (multisample)
+			{
+				tempPath.append("MS");
+			}
+			tempPath.append("_d");
+			tempPath.append(".cso");
 #else
-			tempPath.append("_PS.cso");
+			tempPath.append("_PS");
+			if (multisample)
+			{
+				tempPath.append("MS");
+			}
+			tempPath.append(".cso");
 #endif
-
 			material->m_PixelShader = Resources::TRes->GetPixelShader(tempPath);
 			if (!material->m_PixelShader)System::Print("Couldn't find Pixel shader: %s", tempPath.c_str());;
 		}
@@ -233,15 +376,22 @@ namespace Themp
 			material->m_GeometryShader = Resources::TRes->GetGeometryShader(tempPath);
 			if (!material->m_GeometryShader)System::Print("Couldn't find Geometry shader: %s", tempPath.c_str());
 		}
-		material->LoadMaterialProperties(materialName);
-		material->ReadTexture(texture);
-		m_Materials[std::string(shaderPath).append(std::to_string(m_Materials.size()))] = material;
+		std::vector<std::string> textures = { texture, "" };
+		std::vector<std::uint8_t> textureTypes = { Material::DIFFUSE, Material::PBR};
+		material->GetMaterialProperties(materialName,&textures[1]);
+		if (textures[1] == "")textureTypes[1] = Material::UNUSED;
+		material->ReadTextures(textures, textureTypes);
+		m_Materials[materialName] = material;
 		return material;
 	}
 
-	Themp::Material* Resources::LoadMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader)
+	Themp::Material* Resources::LoadMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, bool multisample)
 	{
 		std::string tempPath = shaderPath;
+
+		std::unordered_map<std::string, Material*>::iterator s = m_Materials.find(materialName);
+		if (s != m_Materials.end()) return s->second;
+
 		Themp::Material* material = new Themp::Material();
 		if (vertexShader)
 		{
@@ -272,9 +422,20 @@ namespace Themp
 		{
 			tempPath = shaderPath;
 #ifdef _DEBUG
-			tempPath.append("_PS_d.cso");
+			tempPath.append("_PS");
+			if (multisample)
+			{
+				tempPath.append("MS");
+			}
+			tempPath.append("_d");
+			tempPath.append(".cso");
 #else
-			tempPath.append("_PS.cso");
+			tempPath.append("_PS");
+			if (multisample)
+			{
+				tempPath.append("MS");
+			}
+			tempPath.append(".cso");
 #endif
 			material->m_PixelShader = Resources::TRes->GetPixelShader(tempPath);
 			if (!material->m_PixelShader)System::Print( "Couldn't find Pixel shader: %s" ,tempPath.c_str());
@@ -291,9 +452,57 @@ namespace Themp
 			if (!material->m_GeometryShader)System::Print( "Couldn't find Geometry shader: %s" , tempPath.c_str());
 		}
 
-		material->LoadMaterialProperties(materialName);
+		std::string PBRTex = "";
+		material->GetMaterialProperties(materialName,&PBRTex);
+		if (PBRTex != "")
+		{
+			bool replacedSpec = false;
+			for (size_t i = 0; i < textureTypes.size(); i++)
+			{
+				//detect "specular textures", we don't use them so replace them with the PBR texture
+				if (textureTypes[i] == Material::PBR || textureTypes[i] == 7)
+				{
+					replacedSpec = true;
+					textureTypes[i] = Material::PBR;
+					while(textures.size()-1 < i)
+					{
+						textures.push_back("");
+					}
+					textures[i] = PBRTex;
+					break;
+				}
+			}
+			if (!replacedSpec)
+			{
+				if (textures.size() < MAX_TEXTURES)
+				{
+					textures.push_back(PBRTex);
+					textureTypes.push_back(Material::PBR);
+				}
+				else
+				{
+					bool emptySlot = false;
+					for (size_t i = 0; i < textureTypes.size(); i++)
+					{
+						if (textureTypes[i] == Material::UNUSED)
+						{
+							emptySlot = true;
+							textures[i] = PBRTex;
+							textureTypes[i] = Material::PBR;
+							break;
+						}
+					}
+					if (!emptySlot)
+					{
+						//Well shit son, this shouldn't ever happen..
+						assert(false);
+						System::Print("Tried to load PBR Texture but textures.size was >= MAX_TEXTURES");
+					}
+				}
+			}
+		}
 		material->ReadTextures(textures,textureTypes);
-		m_Materials[std::string(shaderPath).append(std::to_string(m_Materials.size()))] = material;
+		m_Materials[materialName] = material;
 		return material;
 	}
 
@@ -326,6 +535,7 @@ namespace Themp
 			return nullptr;
 		}
 		Object3D* newObject = new Object3D();
+		m_Models[name] = newObject;
 
 		std::vector<int> materialOrder;
 
@@ -357,6 +567,7 @@ namespace Themp
 			mesh->numIndices = meshHeader.numIndices;
 			//the mesh itself doesn't store a material ID but a pointer to material itself, we assign it later in the program so for now keep track of it..
 			materialOrder.push_back(meshHeader.materialID);
+			m_Meshes.push_back(mesh);
 			
 			newObject->m_Meshes.push_back(mesh);
 		}
@@ -399,7 +610,7 @@ namespace Themp
 			}
 			if (numTextures != 0)
 			{
-				Themp::Material* newMaterial = LoadMaterial(SanitizeSlashes(fileNameWithoutExtension + "/"+ materialName),textureNames,textureTypes, "default", true, true, false);
+				Themp::Material* newMaterial = GetMaterial(SanitizeSlashes(fileNameWithoutExtension + "/"+ materialName),textureNames,textureTypes, "default", true, true, false);
 				textureTypes.clear();
 				loadedMaterials.push_back(newMaterial);
 			}
@@ -419,7 +630,6 @@ namespace Themp
 			newObject->m_Meshes[j]->m_Material = loadedMaterials[materialOrder[j]];
 			//newObject->m_Meshes[j]->m_Material = loadedMaterials[0];
 		}
-		//m_3DObjects.push_back(newObject);
 		newObject->Construct();
 		return newObject;
 	}
@@ -428,20 +638,20 @@ namespace Themp
 		std::string output = "";
 		output.reserve(input.size());
 
-		int i = input.size()-1;
+		int64_t i = (int64_t)(input.size()-1);
 		while (i >= 0)
 		{
 			//remove double (or more) slashes "//" or "\\" in filepaths
 			if (i - 1 >= 0 && (input[i] == '/' || input[i] == '\\' || input[i] == 255) && (input[i - 1] == '/' || input[i - 1] == '\\'))
 			{
 				//mark for ignore
-				input[i] = 255;
+				input[i] = (unsigned char)255;
 			}
 			i--;
 		}
 		for (i = 0; i < input.size(); i++)
 		{
-			if (input[i] != static_cast<char>(255))
+			if (input[i] != (unsigned char)255)
 			{
 				output += input[i];
 			}

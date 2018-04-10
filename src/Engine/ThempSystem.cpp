@@ -20,6 +20,12 @@ void ImGui_PrepareFrame();
 
 namespace Themp
 {
+	float lerp(float x, float y, float t)
+	{
+		return x * (1.0 - t) + y * t;
+	}
+
+
 	System* System::tSys = nullptr;
 	FILE* System::logFile = nullptr;
 	
@@ -43,7 +49,6 @@ namespace Themp
 		double frameTimeAdd = 0, tickTimeAdd=0;
 
 		RECT windowRect,clientRect;
-		POINT cursorPos;
 		GetWindowRect(m_Window, &windowRect);
 		GetClientRect(m_Window, &clientRect);
 
@@ -52,11 +57,11 @@ namespace Themp
 
 		//printf("BorderX: %i\n BorderY: %i\n Caption: %i\n", borderX, borderY, caption);
 		SetCursorPos(windowRect.left + (windowRect.right - windowRect.left) / 2, windowRect.top + (windowRect.bottom - windowRect.top) / 2);
-		ShowCursor(false);
 		ImGuiIO& io = ImGui::GetIO();
 		while (!tSys->m_Quitting)
 		{
 			double delta = timer.GetDeltaTimeReset();
+			GetWindowRect(m_Window, &windowRect);
 			trackerTime += delta;
 			MSG msg;
 			io = ImGui::GetIO();
@@ -79,21 +84,25 @@ namespace Themp
 				if (msg.message == WM_RBUTTONDOWN)
 				{
 					m_Game->m_Keys[1023] = m_Game->m_Keys[1023] == 0 ? 2 : 1;
+					if (m_CursorShown)
+					{
+						SetCursorPos(windowRect.left + (windowRect.right - windowRect.left) / 2, windowRect.top + (windowRect.bottom - windowRect.top) / 2);
+						m_CursorShown = false;
+						ShowCursor(m_CursorShown);
+					}
 				}
 				if (msg.message == WM_RBUTTONUP)
 				{
 					m_Game->m_Keys[1023] = 0;
+					if (!m_CursorShown)
+					{
+						m_CursorShown = true;
+						ShowCursor(m_CursorShown);
+					}
 				}
 				if (msg.message == WM_KEYDOWN)
 				{
 					m_Game->m_Keys[msg.wParam] = m_Game->m_Keys[msg.wParam] == 0 ? 2 : 1;
-					if (msg.wParam == VK_ESCAPE)tSys->m_Quitting = true;
-					//std::cout << msg.wParam << std::endl;
-					if (msg.wParam == VK_TAB)
-					{
-						m_CursorShown = !m_CursorShown;
-						ShowCursor(m_CursorShown);
-					}
 				}
 				if (msg.message == WM_KEYUP)
 				{
@@ -101,19 +110,18 @@ namespace Themp
 				}
 			}
 			//sadly we need all these calls
-			GetWindowRect(m_Window, &windowRect);
 			GetClientRect(m_Window, &clientRect);
 			GetCursorPos(&m_Game->m_CursorPos);
 			int windowDiffX = (windowRect.right - windowRect.left - clientRect.right) / 2;
-			int windowDiffY = (windowRect.bottom - windowRect.top - clientRect.bottom) * 0.75;
+			int windowDiffY = (int)((windowRect.bottom - windowRect.top - clientRect.bottom) * 0.75);
 
-			io.DeltaTime = delta;
-			m_Game->m_CursorDeltaX = (windowRect.left + (windowRect.right - windowRect.left) / 2) - m_Game->m_CursorPos.x;
-			m_Game->m_CursorDeltaY = (windowRect.top + (windowRect.bottom - windowRect.top) / 2) - m_Game->m_CursorPos.y;
+			io.DeltaTime = (float)delta;
+			m_Game->m_CursorDeltaX = (float)((windowRect.left + (windowRect.right - windowRect.left) / 2) - m_Game->m_CursorPos.x);
+			m_Game->m_CursorDeltaY = (float)((windowRect.top + (windowRect.bottom - windowRect.top) / 2) - m_Game->m_CursorPos.y);
 
 			//windows Title bar messes up the actual mouse position for collision testing with the UI, so I adjust it to fit "good enough" since getting exact measurements from top and bottom is a pain
-			io.MousePos = ImVec2(m_Game->m_CursorPos.x - windowRect.left - windowDiffX, m_Game->m_CursorPos.y - windowRect.top - windowDiffY);
-			io.DisplaySize = ImVec2(clientRect.right, clientRect.bottom);
+			io.MousePos = ImVec2((float)(m_Game->m_CursorPos.x - windowRect.left - windowDiffX), (float)(m_Game->m_CursorPos.y - windowRect.top - windowDiffY));
+			io.DisplaySize = ImVec2((float)clientRect.right, (float)clientRect.bottom);
 
 			ImGui_PrepareFrame();
 			//finally we can start our important stuff, ImGui::NewFrame is needed for ImGui so it can get set up for any UI calls we make
@@ -128,9 +136,11 @@ namespace Themp
 			//Doesn't actually render but prepares render data for us to use
 			ImGui::Render();
 
+			m_D3D->m_ConstantBufferData.time += delta;
+			m_D3D->dirtySystemBuffer = true;
 			numSamples++;
 			double tDelta = timer.GetDeltaTime();
-			m_D3D->PrepareSystemBuffer(*m_Game);
+			m_D3D->PrepareSystemBuffer();
 			m_D3D->Draw(*m_Game);
 			m_D3D->DrawImGUI();
 
@@ -146,6 +156,12 @@ namespace Themp
 				numSamples = 0;
 			}
 		}
+
+		GetWindowRect(m_Window, &windowRect);
+		m_SVars["WindowSizeX"] = windowRect.right - windowRect.left;
+		m_SVars["WindowSizeY"] = windowRect.bottom - windowRect.top;
+
+
 		m_Game->Stop();
 		delete m_Game;
 		m_Game = nullptr;
@@ -168,7 +184,7 @@ int newWindowSizeY = 0;
 int WINAPI WinMain(HINSTANCE hInstance,HINSTANCE hPrevInstance,	LPSTR lpCmdLine,int nCmdShow)
 {
 	AllocConsole();
-	freopen("CONOUT$", "w", stdout);
+	FILE* conout = freopen("CONOUT$", "w", stdout);
 	Themp::System::tSys = new Themp::System();
 	Themp::System* tSys = Themp::System::tSys;
 	Themp::System::logFile = fopen("log.txt", "w+");
@@ -195,25 +211,31 @@ int WINAPI WinMain(HINSTANCE hInstance,HINSTANCE hPrevInstance,	LPSTR lpCmdLine,
 			nConfig << "Fullscreen 0\n";
 			nConfig << "WindowPosX 0\n";
 			nConfig << "WindowPosY 0\n";
-			nConfig << "WindowSizeX 800\n";
-			nConfig << "WindowSizeY 600\n";
+			nConfig << "WindowSizeX 1024\n";
+			nConfig << "WindowSizeY 900\n";
 			nConfig << "Anisotropic_Filtering 1\n";
+			nConfig << "Multisample 1\n";
 
 			nConfig.close();
 		}
 		tSys->m_SVars[std::string("Fullscreen")] = 0;
 		tSys->m_SVars[std::string("WindowPosX")] = 0;
 		tSys->m_SVars[std::string("WindowPosY")] = 0;
-		tSys->m_SVars[std::string("WindowSizeX")] = 800;
-		tSys->m_SVars[std::string("WindowSizeY")] = 600;
+		tSys->m_SVars[std::string("WindowSizeX")] = 1024;
+		tSys->m_SVars[std::string("WindowSizeY")] = 800;
 		tSys->m_SVars[std::string("Anisotropic_Filtering")] = 1;
+		tSys->m_SVars[std::string("Multisample")] = 1;
 	}
 	
-	//for (std::map<std::string,float>::iterator i = tSys->m_SVars.begin(); i != tSys->m_SVars.end(); i++)
-	//{
-	//	std::cout << i->first << "  "<<i->second << std::endl;
-	//}
-	//Sleep(4000);
+	//check whether all values exist: (in case of outdated config.ini)
+	if (tSys->m_SVars.find("Fullscreen") == tSys->m_SVars.end()) { tSys->m_SVars[std::string("Fullscreen")] = 0; }
+	if (tSys->m_SVars.find("WindowPosX") == tSys->m_SVars.end()) { tSys->m_SVars[std::string("WindowPosX")] = 0; }
+	if (tSys->m_SVars.find("WindowPosY") == tSys->m_SVars.end()) { tSys->m_SVars[std::string("WindowPosY")] = 0; }
+	if (tSys->m_SVars.find("WindowSizeX") == tSys->m_SVars.end()) { tSys->m_SVars[std::string("WindowSizeX")] = 1024; }
+	if (tSys->m_SVars.find("WindowSizeY") == tSys->m_SVars.end()) { tSys->m_SVars[std::string("WindowSizeY")] = 800; }
+	if (tSys->m_SVars.find("Anisotropic_Filtering") == tSys->m_SVars.end()) { tSys->m_SVars[std::string("Anisotropic_Filtering")] = 1; }
+	if (tSys->m_SVars.find("Multisample") == tSys->m_SVars.end()) { tSys->m_SVars[std::string("Multisample")] = 1; }
+	
 	ImGui::CreateContext();
 	WNDCLASSEX wc;
 	ZeroMemory(&wc, sizeof(WNDCLASSEX));
@@ -278,8 +300,8 @@ int WINAPI WinMain(HINSTANCE hInstance,HINSTANCE hPrevInstance,	LPSTR lpCmdLine,
 	newWindowSizeY = winRect.bottom;
 
 	ImGuiIO& imgIo = ImGui::GetIO();
-	imgIo.DisplaySize.x = winRect.right;
-	imgIo.DisplaySize.y = winRect.bottom;
+	imgIo.DisplaySize.x = (float)winRect.right;
+	imgIo.DisplaySize.y = (float)winRect.bottom;
 
 	imgIo.KeyMap[ImGuiKey_Tab] = VK_TAB;                       // Keyboard mapping. ImGui will use those indices to peek into the io.KeyDown[] array that we will update during the application lifetime.
 	imgIo.KeyMap[ImGuiKey_LeftArrow] = VK_LEFT;
@@ -302,40 +324,43 @@ int WINAPI WinMain(HINSTANCE hInstance,HINSTANCE hPrevInstance,	LPSTR lpCmdLine,
 	imgIo.KeyMap[ImGuiKey_X] = 'X';
 	imgIo.KeyMap[ImGuiKey_Y] = 'Y';
 	imgIo.KeyMap[ImGuiKey_Z] = 'Z';
-
 	imgIo.ImeWindowHandle = tSys->m_Window;
-	Themp::System::Print("TestNoArgs");
-	try
+
+	tSys->Start();
+
+	std::ofstream nConfig("config.ini");
+	if (nConfig.is_open())
 	{
-		tSys->Start();
+		for (std::map<std::string,float>::iterator i = tSys->m_SVars.begin(); i != tSys->m_SVars.end(); i++)
+		{
+			nConfig << i->first << " " << i->second << std::endl;
+		}
+		nConfig.close();
 	}
-	catch (std::exception& e)
-	{
-		Themp::System::Print(e.what());
-		throw e;
-	}
+
 	fclose(Themp::System::logFile);
+	fclose(conout);
 	delete tSys;
 	return 0;
 }
 
 void Themp::System::Print(const char* message, ...)
 {
-	int strLength = strlen(message);
-	int fmtMsgSize = strLength < 64 ? 64 : strLength * 2;
+	size_t strLength = strlen(message);
+	int fmtMsgSize = strLength < 128 ? 256 : strLength * 2;
 	char* buffer = new char[fmtMsgSize];
 	memset(buffer, 0, fmtMsgSize);
 	std::string timestamp;
-	char msg[64];
+	char* msg = new char[fmtMsgSize];
 	timeb t;
 	ftime(&t);
-	strftime(msg, sizeof(msg), "[%T", localtime(&t.time));
+	strftime(msg, fmtMsgSize, "[%T", localtime(&t.time));
 	timestamp.insert(0, msg);
 	timestamp.append(":");
 	memset(msg, 0, 4);
 	short msVal = t.millitm;
 	timestamp.append(itoa(t.millitm, msg, 10));
-	timestamp.append(msVal < 100 ? "0] " : "] ");
+	timestamp.append(msVal < 10 ? "00] " : (msVal < 100 ? "0] " : "] "));
 	va_list args;
 	va_start(args, message);
 	vsnprintf(buffer, fmtMsgSize, message, args);
@@ -344,15 +369,14 @@ void Themp::System::Print(const char* message, ...)
 	timestamp.append(buffer);
 	timestamp.append("\n");
 	printf("%s", timestamp.c_str());
-	delete buffer;
+	delete[] buffer;
+	delete[] msg;
 	if (logFile)
 	{
 		fwrite(timestamp.c_str(), timestamp.size(), 1, logFile);
 		fflush(logFile);
 	}
 }
-
-
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	ImGui_WndProcHandler(hWnd, message, wParam, lParam);
@@ -368,8 +392,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 			newWindowSizeX = windowRect.right;
 			newWindowSizeY = windowRect.bottom;
 
-			imgIo.DisplaySize.x = newWindowSizeX;
-			imgIo.DisplaySize.y = newWindowSizeY;
+			imgIo.DisplaySize.x = (float)newWindowSizeX;
+			imgIo.DisplaySize.y = (float)newWindowSizeY;
 			if(Themp::System::tSys->m_D3D)
 				Themp::System::tSys->m_D3D->ResizeWindow(newWindowSizeX, newWindowSizeY);
 		}
@@ -387,18 +411,29 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 			PostQuitMessage(0);
 			return 0; 
 		}break;
-		case WM_SIZING:
+		case WM_SIZE:
 		{
+			if (wParam == SIZE_MAXIMIZED)
+			{
+				Themp::System::tSys->m_SVars[std::string("WindowPosX")] = 0;
+				Themp::System::tSys->m_SVars[std::string("WindowPosY")] = 0;
+			}
 			//I see no reason why we should resize DURING the sizing move, rather wait until we're done resizing and then actually change everything..
 		}break;
+		case WM_MOVING:
+		{
+			GetWindowRect(Themp::System::tSys->m_Window, &windowRect);
+			Themp::System::tSys->m_SVars[std::string("WindowPosX")] = windowRect.left;
+			Themp::System::tSys->m_SVars[std::string("WindowPosY")] = windowRect.top;
+		}
 		case WM_EXITSIZEMOVE:
 		{
 			//we're done resizing the window, now resize all the rendering resources
 			GetClientRect(Themp::System::tSys->m_Window, &windowRect);
 			newWindowSizeX = windowRect.right;
 			newWindowSizeY = windowRect.bottom;
-			imgIo.DisplaySize.x = windowRect.right;
-			imgIo.DisplaySize.y = windowRect.bottom;
+			imgIo.DisplaySize.x =(float)windowRect.right;
+			imgIo.DisplaySize.y =(float)windowRect.bottom;
 			Themp::System::tSys->m_D3D->ResizeWindow(newWindowSizeX, newWindowSizeY);
 		}break;
 	}
