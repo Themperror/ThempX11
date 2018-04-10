@@ -37,6 +37,12 @@
     <Filter Include="Assets\Shaders">
       <UniqueIdentifier>{e08fcb86-e875-4818-84c4-39819f1c1433}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Engine\Shadowing">
+      <UniqueIdentifier>{b7a596d5-2a28-4aa9-a85c-44ab041c1d21}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Engine\Shadowing">
+      <UniqueIdentifier>{200293d5-f40e-4a9d-8695-1ccd5fc6ce81}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Engine\ThempD3D.cpp">
@@ -57,16 +63,10 @@
     <ClCompile Include="src\Engine\ThempMesh.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
-    <ClCompile Include="src\Game\ThempCamera.cpp">
-      <Filter>Source Files\Game</Filter>
-    </ClCompile>
     <ClCompile Include="src\Engine\ThempRenderTexture.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
     <ClCompile Include="src\Engine\ThempSystem.cpp">
-      <Filter>Source Files\Engine</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Engine\ThempShadowMap.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
     <ClCompile Include="src\Library\imgui.cpp">
@@ -79,6 +79,30 @@
       <Filter>Source Files\Library</Filter>
     </ClCompile>
     <ClCompile Include="src\Engine\ThempGUI.cpp">
+      <Filter>Source Files\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine\ThempCamera.cpp">
+      <Filter>Source Files\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine\Shadowing\ThempShadow.cpp">
+      <Filter>Source Files\Engine\Shadowing</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine\Shadowing\ThempShadowCascade.cpp">
+      <Filter>Source Files\Engine\Shadowing</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine\Shadowing\ThempShadowPCF.cpp">
+      <Filter>Source Files\Engine\Shadowing</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine\Shadowing\ThempShadowMoment.cpp">
+      <Filter>Source Files\Engine\Shadowing</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine\Shadowing\ThempShadowVariance.cpp">
+      <Filter>Source Files\Engine\Shadowing</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine\Shadowing\ThempShadowUnfiltered.cpp">
+      <Filter>Source Files\Engine\Shadowing</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine\ThempShadowAtlas.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
   </ItemGroup>
@@ -101,16 +125,10 @@
     <ClInclude Include="src\Engine\ThempMesh.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
-    <ClInclude Include="src\Game\ThempCamera.h">
-      <Filter>Header Files\Game</Filter>
-    </ClInclude>
     <ClInclude Include="src\Engine\ThempRenderTexture.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
     <ClInclude Include="src\Engine\ThempSystem.h">
-      <Filter>Header Files\Engine</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Engine\ThempShadowMap.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
     <ClInclude Include="src\Library\imconfig.h">
@@ -134,6 +152,30 @@
     <ClInclude Include="src\Engine\ThempGUI.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
+    <ClInclude Include="src\Engine\ThempCamera.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine\Shadowing\ThempShadow.h">
+      <Filter>Header Files\Engine\Shadowing</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine\Shadowing\ThempShadowCascade.h">
+      <Filter>Header Files\Engine\Shadowing</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine\Shadowing\ThempShadowPCF.h">
+      <Filter>Header Files\Engine\Shadowing</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine\Shadowing\ThempShadowMoment.h">
+      <Filter>Header Files\Engine\Shadowing</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine\Shadowing\ThempShadowVariance.h">
+      <Filter>Header Files\Engine\Shadowing</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine\Shadowing\ThempShadowUnfiltered.h">
+      <Filter>Header Files\Engine\Shadowing</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine\ThempShadowAtlas.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="resources\shaders\Deferred_ps.hlsl">
@@ -142,19 +184,10 @@
     <FxCompile Include="resources\shaders\Deferred_vs.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="resources\shaders\DeferredPresent_ps.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="resources\shaders\DeferredPresent_vs.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="resources\shaders\DeferredShadow_ps.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
     <FxCompile Include="resources\shaders\DeferredShadow_vs.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="resources\shaders\Defines.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
     <FxCompile Include="resources\shaders\DeferredShadow_gs.hlsl">
@@ -187,5 +220,55 @@
     <FxCompile Include="resources\shaders\Skybox_vs.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredShadowFallback_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredShadowFallback_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredLightingCascade_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredLightingCascade_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredLightingMoment_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredLightingMoment_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredLightingPCF_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredLightingPCF_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredLightingVariance_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredLightingVariance_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\PostProcess_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\PostProcess_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredShadowCascade_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredShadowCascade_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DeferredShadowCascade_gs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="resources\shaders\Defines.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

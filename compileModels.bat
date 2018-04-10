@@ -13,5 +13,4 @@ FOR /f "delims=" %%a IN ('xcopy /y /L /s "%sourcedir%\*"') DO (
   )
  )
 )
-pause
 GOTO :EOF
