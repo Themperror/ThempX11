@@ -12,10 +12,15 @@ This engine demonstrates Physically Based Rendering and several Shadow Mapping t
 PBR is fed by data coming from custom made textures, where the R-channel is feeding roughness, the G-channel feeding Metallic and the B channeling feeding Ambient Occlusion
 
 The Shadow mapping techniques are:
+
 Regular Shadow Mapping (unfiltered) - done 
+
 Percentage-Closer Filtering - done
+
 Cascaded Shadow Mapping - W.I.P
+
 Variance Shadow Mapping - Planned
+
 Moment Shadow Mapping - Planned
 
 I also use a shadow-atlas wherever I can (the same kind as DOOM uses as is seen here: http://www.adriancourreges.com/blog/2016/09/09/doom-2016-graphics-study/ )
