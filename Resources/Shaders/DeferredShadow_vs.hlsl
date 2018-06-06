@@ -1,5 +1,5 @@
 #include "Defines.hlsl"
-
+#include "Structs.hlsl"
 
 VS_SHADOW_OUTPUT VShader(VS_INPUT input)
 {

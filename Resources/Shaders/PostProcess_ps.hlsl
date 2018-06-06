@@ -1,3 +1,6 @@
+#include "Defines.hlsl"
+#include "Functions.hlsl"
+
 Texture2D g_Diffuse : register(t0);
 Texture2D g_Normal : register(t1);
 Texture2D g_F0Tex : register(t2);
@@ -45,11 +48,6 @@ struct VS_OUTPUT
     float4 positionVS : SV_POSITION;
     float2 uv : UV0;
 };
-float Remap(float x, float input_min, float input_max, float output_min, float output_max)
-{
-    float n = (x - output_min) / (output_max - output_min);
-    return input_min + ((input_max - input_min) * n);
-}
 float4 PShader(VS_OUTPUT input) : SV_Target
 {
     //float2 uv = float2(

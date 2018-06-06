@@ -1,5 +1,4 @@
-#pragma pack_matrix( row_major )
-
+#include "Defines.hlsl"
 
 struct VS_OUTPUT
 {

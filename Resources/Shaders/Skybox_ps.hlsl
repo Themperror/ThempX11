@@ -1,8 +1,9 @@
-#pragma pack_matrix( row_major )
+#include "Defines.hlsl"
+
 struct VS_OUTPUT
 {
     float4 positionVS : SV_POSITION;
-    float3 normalVS : NORMAL0;
+    float3 normalWS : NORMAL0;
     float3 positionWS : POSITION;
     float3 uv : UV0;
 };
@@ -63,7 +64,7 @@ PS_OUTPUT PShader(VS_OUTPUT input)
 
 
     //output.diffuse = float4(1,1,1, 1.0); //mark as sky so it doesn't get lighting pass
-    output.normal = float4(normalize(input.normalVS), 4);
+    output.normal = float4(normalize(input.normalWS), 4);
     output.specular = float4(0.0, 0.0, 0.0, 0.0);
     output.misc = float4(0.0, 0.0, 0.0, 0.0);
 

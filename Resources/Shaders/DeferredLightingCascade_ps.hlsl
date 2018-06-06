@@ -1,5 +1,86 @@
 #include "Defines.hlsl"
+#include "Functions.hlsl"
 
+struct LightData
+{
+    int enabled, ldummy0, ldummy1, ldummy2;
+    float4 position;
+    float4 color;
+};
+struct DirectionalLight : LightData
+{
+    float4x4 lightprojmatrix[NUM_CASCADES];
+    float4x4 lightviewmatrix[NUM_CASCADES];
+    float4 direction;
+    float4 texOffset; //x offset, y offset, width, height;
+};
+struct PointLight : LightData
+{
+	//float range, type, dummyRZ,dummyRW; //64
+    float4x4 lightprojmatrix;
+    float4x4 lightviewmatrix[6]; //128
+    float4 texOffset[6]; //x offset, y offset, width, height;
+};
+struct SpotLight : LightData
+{
+    float4 direction;
+    float angleMin, angleMax, range, dummyRW; //64
+    float4x4 lightprojmatrix;
+    float4x4 lightviewmatrix; //128
+    float4 texOffset; //x offset, y offset, width, height;
+};
+		
+
+cbuffer CameraBuffer : register(b1)
+{
+    float4x4 viewMatrix;
+    float4x4 projectionMatrix;
+    float4x4 invProjectionMatrix;
+    float4x4 invViewMatrix;
+    float4 cameraPosition;
+    float4 cameraDir;
+};
+cbuffer ConstantBuffer : register(b2)
+{
+    float _screenWidth;
+    float _screenHeight;
+    float _visualType;
+    float _SkyboxLerp;
+
+    float _shadowType;
+    float _globalRoughness;
+    float _globalMetallic;
+    float _MSAAValue;
+
+    float _time;
+    float _F0x;
+    float _F0y;
+    float _F0z;
+
+    float _numCascades;
+    float _shadow_atlas_size;
+    float _d6;
+    float _d7;
+};
+
+cbuffer CascadeLightBuffer : register(b4)
+{
+    uint _numDir, _numSpot, _numPoint, _cascadeIndex ;
+    float4 splits0;
+    float4 splits1;
+    DirectionalLight _dirLights[NUM_LIGHTS];
+    PointLight _pointLights[NUM_LIGHTS];
+    SpotLight _spotLights[NUM_LIGHTS];
+};
+struct VS_OUTPUT
+{
+    float4 positionVS : SV_POSITION;
+    float3 normalWS : NORMAL0;
+    float3 tangentWS : TANGENT;
+    float3 bitangentWS : BITANGENT;
+    float3 positionWS : POSITION;
+    float2 uv : UV0;
+};
 
 Texture2D diff : register(t0);
 Texture2D norm : register(t1);
@@ -10,23 +91,33 @@ Texture2D depth : register(t5);
 
 #ifdef MS
 Texture2DMS<float> nonDirshadow : register(t6);
-Texture2DMSArray<float> cascadeShadow : register(t7);
+//Texture2DMS<float> cascadeShadow[6] : register(t7);
+Texture2DMS<float> cascadeShadow0 : register(t7);
+Texture2DMS<float> cascadeShadow1 : register(t8);
+Texture2DMS<float> cascadeShadow2 : register(t9);
+Texture2DMS<float> cascadeShadow3 : register(t10);
+Texture2DMS<float> cascadeShadow4 : register(t11);
+Texture2DMS<float> cascadeShadow5 : register(t12);
 #else
 Texture2D nonDirshadow : register(t6);
-Texture2DArray cascadeShadow : register(t7);
+//Texture2D cascadeShadow[6] : register(t7);
+Texture2D cascadeShadow0 : register(t7);
+Texture2D cascadeShadow1 : register(t8);
+Texture2D cascadeShadow2 : register(t9);
+Texture2D cascadeShadow3 : register(t10);
+Texture2D cascadeShadow4 : register(t11);
+Texture2D cascadeShadow5 : register(t12);
 #endif
 
-TextureCube SkyTex1 : register(t8);
-TextureCube IBLTex1 : register(t9);
-TextureCube SkyTex2 : register(t10);
-TextureCube IBLTex2 : register(t11);
+TextureCube SkyTex1 : register(t13);
+TextureCube IBLTex1 : register(t14);
+TextureCube SkyTex2 : register(t15);
+TextureCube IBLTex2 : register(t16);
 SamplerState SampleType[4];
 
-float3 BRDF(float3 albedo, float3 F0v, float3 V, float3 normal, float3 lightDir, float4 lightCol, float roughness, float metallic);
-float3 SpecBRDF(float3 normal, float3 V, float2 texCoord, float roughness, float metallic, float3 F0v);
 
-float IsLitDirectional(float4 worldPixel, int i);
-bool IsLitPoint(float4 worldPixel, int i, out float distStrength, out float shadowStrength);
+float IsLitDirectional(const float4 worldPixel, const int i, const float pixelDepth, const float pixelWorldDepth);
+bool IsLitPoint(float4 worldPixel, const int i, out float distStrength, out float shadowStrength);
 
 float4 PShader(VS_OUTPUT input) : SV_TARGET
 {
@@ -35,6 +126,10 @@ float4 PShader(VS_OUTPUT input) : SV_TARGET
     int2 texCoord = input.positionVS.xy;
 
 	float4 albedo = diff.Load(int3(texCoord, 0));
+    if (albedo.w == 0.0)
+    {
+        return albedo.xyzw;
+    }
 	//X = Roughness, Y = Metallic, Z = EmissiveStrength, W = isEmissive ( non 0 = true)
     float4 miscData = misc.Load(int3(texCoord, 0));
 
@@ -43,132 +138,154 @@ float4 PShader(VS_OUTPUT input) : SV_TARGET
     float roughness = miscData.x;
     float metallic = miscData.y;
     float4 position = pos.Load(int3(texCoord, 0));
+    float pixelDepth = depth.Load(int3(texCoord, 0)).r;
+    //float pixelWorldDepth = distance(cameraPosition, position);
+
+    float4 viewPos = mul(position, mul(viewMatrix, projectionMatrix));
+    float pixelWorldDepth = viewPos.z;
     float3 normal = normalize(norm.Load(int3(texCoord, 0)).xyz);
 	//AO Value is stored in W value
     albedo = float4(albedo.xyz, albedo.w);
 
-   // F0v = lerp(float3(0.04, 0.04, 0.04), F0v, metallic);
-    
-	if (albedo.w == 0.0)
-    {
-        return albedo.xyzw;
-    }
-   
+    // F0v = lerp(float3(0.04, 0.04, 0.04), F0v, metallic);
     float3 V = normalize(cameraPosition.xyz - position.xyz);
 	
-    if (_visualType == 6.0)
-    {
-        return float4(metallic, metallic, metallic, 1.0);
-    }
-    if (_visualType == 7.0)
-    {
-        return float4(roughness, roughness, roughness, 1.0);
-    }
-    if (_visualType == 8.0)
-    {
-        return float4(albedo.xyz, 1.0);
-    }
-
 
 	//attempt from: https://learnopengl.com/PBR/Theory
 	//cook torrance
     float3 directBRDF = float3(0, 0, 0);
 	
-    float3 specBRDF = SpecBRDF(normal, V,texCoord, roughness, metallic,F0v.xyz,SkyTex1,SkyTex2,SampleType[0]);
+    float3 specBRDF = SpecBRDF(normal, V,texCoord, roughness, metallic,F0v.xyz,SkyTex1,SkyTex2,SampleType[0],_SkyboxLerp,_F0x);
     float3 irrMap = GammaCorrect(lerp(textureSphereLod(IBLTex1, SampleType[0], normal, 0).rgb, textureSphereLod(IBLTex2, SampleType[0], normal, 0).rgb, _SkyboxLerp), _F0y);
     float3 specDiffuse = irrMap * albedo.xyz;
-    float3 col = BlendMaterial(albedo.xyz, specDiffuse, specBRDF, metallic);
 
-    uint numLoops = min(_numDir, 3);
-    uint i = 0;
-    for (i = 0; i < numLoops; i++)
+    [unroll(3)]
+    for (uint i = 0; i < _numDir; i++)
     {
-        float litStr = IsLitDirectional(position, i);
+        float litStr = IsLitDirectional(position, i, pixelDepth, pixelWorldDepth);
+        if (_visualType == 1)
+        {
+            if (litStr >= 5.0)
+            {
+                return float4(1, 0, 0, 1);
+            }
+            if (litStr >= 4.0)
+            {
+                return float4(0, 1, 0, 1);
+            }
+            if (litStr >= 3.0)
+            {
+                return float4(0, 0, 1, 1);
+            }
+            if (litStr >= 2.0)
+            {
+                return float4(1, 0, 1, 0);
+            }
+            if (litStr >= 1.0)
+            {
+                return float4(0.5, 1, 0.5, 1);
+            }
+            if (litStr >= 0.0)
+            {
+                return float4(0, 0.5, 1, 1);
+            }
+        }
+		
+        //return float4(litStr, litStr, litStr, litStr);
         if (litStr > 0.0)
         {
-            directBRDF += GammaCorrect(BRDF(albedo.xyz, F0v.xyz, V, normal, normalize(-_dirLights[i].direction.xyz), _dirLights[i].color, roughness, metallic) * litStr, _F0y);
-        }
-        else if (_visualType > 0.0)
-		{
-            directBRDF += GammaCorrect(BRDF(albedo.xyz, F0v.xyz, V, normal, normalize(-_dirLights[i].direction.xyz), _dirLights[i].color, roughness, metallic), _F0y);
+            directBRDF += GammaCorrect(BRDF(albedo.xyz, F0v.xyz, V, normal, normalize(-_dirLights[i].direction.xyz), _dirLights[i].color, roughness, metallic, _visualType, _F0z) * litStr, _F0y);
         }
     }
-    numLoops = min(_numPoint, 3);
-    for (i = 0; i < numLoops; i++)
+	
+    [unroll(3)]
+    for (uint j = 0; j < _numPoint; j++)
     {
         float strength = 0.0;
         float shadowStr= 0.0;
-       //bool lit = IsLitPoint(position, i, strength, shadowStr);
-       //directBRDF += float3(lit, lit, lit);
-       //break;
-        if (IsLitPoint(position, i, strength,shadowStr))
+        if (IsLitPoint(position, j, strength,shadowStr))
         {
-            directBRDF += GammaCorrect(BRDF(albedo.xyz, F0v.xyz, V, normal, -normalize(position.xyz - _pointLights[i].position.xyz), _pointLights[i].color, roughness, metallic) * strength * shadowStr, _F0y);
-        }
-        else if (_visualType > 0.0)
-        {
-            directBRDF += GammaCorrect(BRDF(albedo.xyz, F0v.xyz, V, normal, -normalize(position.xyz - _pointLights[i].position.xyz), _pointLights[i].color, roughness, metallic) * strength, _F0y);
+            directBRDF += GammaCorrect(BRDF(albedo.xyz, F0v.xyz, V, normal, -normalize(position.xyz - _pointLights[j].position.xyz), _pointLights[j].color, roughness, metallic, _visualType, _F0z) * strength * shadowStr, _F0y);
         }
     }
-    if (_visualType == 0.0)
-    {
-        finalResult = float4(directBRDF + col, 1.0);
-    }
-    else if (_visualType == 4.0)
-    {
-        finalResult = float4(specBRDF, 1.0);
 
-    }
-    else if (_visualType == 5.0)
-    {
-        finalResult = float4(directBRDF, 1.0);
-    }
-    else
-    {
-        finalResult = float4(directBRDF, 1.0);
-    }
+    float3 col = BlendMaterial(albedo.xyz, specDiffuse, specBRDF, metallic);
+    finalResult = float4(directBRDF + col, 1.0);
 
     return finalResult;
 }
 
 
-float3 offset_lookup(sampler2D map,float4 loc,float2 offset, float texmapscale)
+float CalcShadowFactor(const float4 lightSpacePos, const int cascadeIndex)
 {
-    return tex2Dproj(map, float4(loc.xy + offset * texmapscale * loc.w, loc.z, loc.w));
 }
 
-
-float IsLitDirectional(float4 worldPixel, int i)
+float IsLitDirectional(const float4 worldPixel, const int i, const float pixelDepth, const float pixelWorldDepth)
 {
-    float4x4 view = (_dirLights[i].lightviewmatrix);
-    float4x4 proj = (_dirLights[i].lightprojmatrix);
     float4 viewPosition = worldPixel;
-    viewPosition = mul(viewPosition, view);
-    viewPosition = mul(viewPosition, proj);
+    int index = _numCascades-1;
 
-    float3 projectTexCoord;
+	// find the appropriate depth map to look up in based on the depth of this pixel
+	//we have a max of 6 cascade splits so this handles them all
+
+	//from DirectX Samples
+    float4 pixelDepth4 = float4(pixelWorldDepth, pixelWorldDepth, pixelWorldDepth, pixelWorldDepth);
+    //float4 pixelDepth4 = float4(viewPosition.z, viewPosition.z, viewPosition.z, viewPosition.z);
+    float4 fComparison = (pixelDepth4 > splits0);
+    float4 fComparison2 = (pixelDepth4 > splits1);
+    float fIndex = dot(
+                            float4(_numCascades > 0,
+                                    _numCascades > 1,
+                                    _numCascades > 2,
+                                    _numCascades > 3)
+                            , fComparison)
+                         + dot(
+                            float4(
+                                    _numCascades > 4,
+                                    _numCascades > 5,
+                                    _numCascades > 6,
+                                    _numCascades > 7)
+                            , fComparison2);
+                                    
+    fIndex = min(fIndex, _numCascades - 1);
+    index = (int) floor(fIndex);
+    if (_visualType == 1)
+    {
+        return fIndex;
+    }
+    //return (float)index / _numCascades;
+
+    viewPosition = mul(viewPosition, mul(_dirLights[i].lightviewmatrix[index], _dirLights[i].lightprojmatrix[index]));
+
+    float3 pt;
 #ifdef MS
     float2 texOffset = _dirLights[i].texOffset.xy;
 #else
-    float2 texOffset = _dirLights[i].texOffset.xy / 8192.0;
+    float2 texOffset = _dirLights[i].texOffset.xy / _shadow_atlas_size;
 #endif
 	
-    projectTexCoord.x = viewPosition.x / viewPosition.w * 0.5 + 0.5f;
-    projectTexCoord.y = -viewPosition.y / viewPosition.w * 0.5 + 0.5f;
-    projectTexCoord.z = viewPosition.z / viewPosition.w;
+    pt.x = viewPosition.x / viewPosition.w * 0.5 + 0.5f;
+    pt.y = -viewPosition.y / viewPosition.w * 0.5 + 0.5f;
+    pt.z = viewPosition.z / viewPosition.w;
      
     float visibility = 0.0;
-    if ((saturate(projectTexCoord.x) == projectTexCoord.x) && (saturate(projectTexCoord.y) == projectTexCoord.y))
+    if ((saturate(pt.x) == pt.x) && (saturate(pt.y) == pt.y))
     {
 #ifdef MS
-        projectTexCoord.xy *= (_dirLights[i].texOffset.zw);
-        projectTexCoord.xy += texOffset.xy;
+        pt.xy *= (_dirLights[i].texOffset.zw);
+        pt.xy += texOffset.xy;
         float totalVis = 0.0;
         const int MSValue = clamp(_MSAAValue, 1, 8);
         for (int j = 0; j < MSValue; j++)
         {
-            float shadowVal = cascadeShadow.Load(float3(projectTexCoord.xy,0), j).r;
-            if (shadowVal > viewPosition.z - 0.0001f)
+            float shadowVal = 
+			index == 0 ? cascadeShadow0.Load(float3(pt.xy,0), j).r : 
+			index == 1 ? cascadeShadow1.Load(float3(pt.xy,0), j).r : 
+			index == 2 ? cascadeShadow2.Load(float3(pt.xy,0), j).r : 
+			index == 3 ? cascadeShadow3.Load(float3(pt.xy,0), j).r : 
+			index == 4 ? cascadeShadow4.Load(float3(pt.xy,0), j).r : 
+			cascadeShadow5.Load(float3(pt.xy,0), j).r;
+            if (shadowVal > viewPosition.z - 0.001f)
             {
                 totalVis += 1.0;
             }
@@ -176,18 +293,28 @@ float IsLitDirectional(float4 worldPixel, int i)
         visibility = totalVis / _MSAAValue;
         
 #else
-        projectTexCoord.xy /= (float2(8192.0, 8192.0) / _dirLights[i].texOffset.zw);
-        projectTexCoord.xy += texOffset.xy;
-        float shadowVal = cascadeShadow.Sample(SampleType[0], float3(projectTexCoord.xy, 0)).r;
-		if (shadowVal > viewPosition.z - 0.0001f)
+        pt.xy /= (float2(_shadow_atlas_size, _shadow_atlas_size) / _dirLights[i].texOffset.zw);
+        pt.xy += texOffset.xy;
+
+        float shadowVal = (
+		index == 0 ? cascadeShadow0.Sample(SampleType[0], pt.xy).r :
+		index == 1 ? cascadeShadow1.Sample(SampleType[0], pt.xy).r :
+		index == 2 ? cascadeShadow2.Sample(SampleType[0], pt.xy).r :
+		index == 3 ? cascadeShadow3.Sample(SampleType[0], pt.xy).r :
+		index == 4 ? cascadeShadow4.Sample(SampleType[0], pt.xy).r :
+					 cascadeShadow5.Sample(SampleType[0], pt.xy).r);
+
+        //float shadowVal = cascadeShadow[index].Sample(SampleType[0], pt.xy).r;
+		if (shadowVal > viewPosition.z - 0.0005f)
         {
             visibility = 1.0f;
         }
 #endif
     }
+	
     return visibility;
 }
-bool IsLitPoint(float4 worldPixel, int i, out float distStrength, out float shadowStrength)
+bool IsLitPoint(float4 worldPixel,const int i, out float distStrength, out float shadowStrength)
 {
     float dist = distance(worldPixel.xyz, _pointLights[i].position.xyz);
     float4x4 proj = (_pointLights[i].lightprojmatrix);
@@ -203,7 +330,7 @@ bool IsLitPoint(float4 worldPixel, int i, out float distStrength, out float shad
 #ifdef MS
         float2 texOffset = _pointLights[i].texOffset[j].xy; //offset is 4096 on X
 #else
-        float2 texOffset = _pointLights[i].texOffset[j].xy / 8192.0;
+        float2 texOffset = _pointLights[i].texOffset[j].xy / _shadow_atlas_size;
 #endif
         projectTexCoord.x = viewPosition.x / viewPosition.w * 0.5 + 0.5f;
         projectTexCoord.y = -viewPosition.y / viewPosition.w * 0.5 + 0.5f;
@@ -220,7 +347,7 @@ bool IsLitPoint(float4 worldPixel, int i, out float distStrength, out float shad
 			const int MSValue = clamp(_MSAAValue, 1, 8);
 			for (int k = 0; k < MSValue; k++)
 			{
-				float shadowVal = cascadeShadow.Load(float3(projectTexCoord.xy,0), k).r;
+				float shadowVal = nonDirshadow.Load(float3(projectTexCoord.xy,0), k).r;
 				if (shadowVal > projectTexCoord.z - 0.0001f)
 				{
 					totalVis += 1.0;
@@ -233,9 +360,9 @@ bool IsLitPoint(float4 worldPixel, int i, out float distStrength, out float shad
 				break;
 			}
 #else
-			projectTexCoord.xy /= (float2(8192.0, 8192.0) / _pointLights[i].texOffset[j].zw);
+            projectTexCoord.xy /= (float2(_shadow_atlas_size, _shadow_atlas_size) / _pointLights[i].texOffset[j].zw);
             projectTexCoord.xy += texOffset.xy;
-            float shadowVal = cascadeShadow.Sample(SampleType[0], float3(projectTexCoord.xy, 0)).r;
+            float shadowVal = nonDirshadow.Sample(SampleType[0], projectTexCoord.xy).r;
             if (shadowVal > projectTexCoord.z - 0.0001f)
             {
                 visibility = 1.0f;
@@ -259,7 +386,7 @@ bool IsLitPoint(float4 worldPixel, int i, out float distStrength, out float shad
 //    viewPosition = mul(viewPosition, proj);
 //
 //    float3 projectTexCoord;
-//    float2 texOffset = spotLights[i].texOffset.xy / 8192.0;
+//    float2 texOffset = spotLights[i].texOffset.xy / SHADOW_MAP_SIZE;
 //    projectTexCoord.x = viewPosition.x / viewPosition.w * 0.5 + 0.5f;
 //    projectTexCoord.y = -viewPosition.y / viewPosition.w * 0.5 + 0.5f;
 //    projectTexCoord.z = viewPosition.z / viewPosition.w; //* 0.5 + 0.5;
@@ -267,7 +394,7 @@ bool IsLitPoint(float4 worldPixel, int i, out float distStrength, out float shad
 //    float visibility = 0;
 //    if ((saturate(projectTexCoord.x) == projectTexCoord.x) && (saturate(projectTexCoord.y) == projectTexCoord.y))//  && viewPosition.z > 0.0)
 //    {
-//        projectTexCoord.xy /= (8192.0 / spotLights[i].texOffset.zw);
+//        projectTexCoord.xy /= (SHADOW_MAP_SIZE / spotLights[i].texOffset.zw);
 //        projectTexCoord.xy += texOffset.xy;
 //        float shadowVal = cascadeShadow.Sample(SampleType[0], projectTexCoord.xy).r;
 //      //  return projectTexCoord.z;

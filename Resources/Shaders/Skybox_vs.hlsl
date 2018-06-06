@@ -1,4 +1,4 @@
-#pragma pack_matrix( row_major )
+#include "Defines.hlsl"
 
 cbuffer ObjectBuffer : register(b0)
 {
@@ -16,7 +16,7 @@ cbuffer CameraBuffer : register(b1)
 struct VS_OUTPUT
 {
     float4 positionVS : SV_POSITION;
-    float3 normalVS : NORMAL0;
+    float3 normalWS : NORMAL0;
     float3 positionWS : POSITION;
     float3 uv : UV0;
 };
@@ -37,7 +37,7 @@ VS_OUTPUT VShader(VS_INPUT input)
     pos = mul(pos, mul(modelMatrix, mul(viewMatrix, projectionMatrix))).xyww; //XYWW instead of XYZW so that its always at max depth
 	//pos = mul(pos, projectionMatrix);
 	
-    output.normalVS = mul(input.normal, (float3x3) modelMatrix);
+    output.normalWS = mul(input.normal, (float3x3) modelMatrix);
 
 	output.uv = input.position;
 	output.positionVS = pos;
