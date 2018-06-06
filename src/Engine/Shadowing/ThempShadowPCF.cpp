@@ -17,10 +17,11 @@ namespace Themp
 {
 	ShadowPCF::ShadowPCF()
 	{
-		m_ShadowCamera = new Camera();
-		m_ShadowAtlas = new ShadowAtlas(8192);
-		m_ShadowAtlas->SetMultiSample(2);
-		D3D::s_D3D->m_DevCon->ClearDepthStencilView(m_ShadowAtlas->m_DepthStencilView, D3D11_CLEAR_FLAG::D3D11_CLEAR_DEPTH, 1.0f, 0);
+		m_ShadowCamera = new Camera(); 
+		m_ShadowCamera->SetOrtho(400, 400);
+		m_ShadowAtlas = new ShadowAtlas(ATLAS_RESOLUTION);
+		SetMultiSample(2);
+		D3D::s_D3D->m_DevCon->ClearDepthStencilView(m_ShadowTexture->m_DepthStencilView, D3D11_CLEAR_FLAG::D3D11_CLEAR_DEPTH, 1.0f, 0);
 
 		D3D11_BUFFER_DESC cbDesc;
 		cbDesc.ByteWidth = sizeof(LightConstantBuffer);
@@ -39,16 +40,26 @@ namespace Themp
 		// Create the buffer.
 		D3D::s_D3D->m_Device->CreateBuffer(&cbDesc, &InitData, &m_LightBuffer);
 		
-		m_PCFLightingMaterial = Resources::TRes->GetMaterial("DeferredLightingPCFMS", "", "DeferredLightingPCF", true, true, false,0,0,true);
+		m_PCFLightingMaterial = Resources::TRes->GetMaterial("DeferredLightingPCFMS", "", "DeferredLightingPCF", false,0,0,true);
 		if (D3D::s_D3D->SupportsVPArrayIndex)
 		{
-			m_ShadowMaterial = Resources::TRes->GetMaterial("DeferredShadow", "", "DeferredShadow", true, true, true);
+			m_ShadowMaterial = Resources::TRes->GetMaterial("DeferredShadow", "", "DeferredShadow", true);
 		}
 		else
 		{
-			m_ShadowMaterial = Resources::TRes->GetMaterial("DeferredShadowFallback", "", "DeferredShadowFallback", true, true, false);
+			m_ShadowMaterial = Resources::TRes->GetMaterial("DeferredShadowFallback", "", "DeferredShadowFallback", false);
 		}
-		m_ShadowClearMaterial = Resources::TRes->GetMaterial("ScreenSpace", "", "ScreenSpace", true, true, false);
+		m_ShadowClearMaterial = Resources::TRes->GetMaterial("ScreenSpace", "", "ScreenSpace",  false);
+
+		m_LightConstantBufferData.numDir = NUM_LIGHTS;
+		for (size_t i = 0; i < NUM_LIGHTS; i++)
+		{
+			m_ShadowMaps[i].l = &m_LightConstantBufferData.dirLights[i];
+			m_ShadowMaps[i].LightIsDirty = true;
+			m_DirtyLights = true;
+			m_LightConstantBufferData.dirLights[i].enabled = false;
+			m_LightConstantBufferData.dirLights[i].textureOffset = m_ShadowAtlas->ObtainTextureArea(SHADOW_RESOLUTION);
+		}
 	}
 	ShadowPCF::~ShadowPCF()
 	{
@@ -58,6 +69,7 @@ namespace Themp
 			m_LightBuffer = nullptr;
 		}
 		delete m_ShadowAtlas;
+		delete m_ShadowTexture;
 		delete m_ShadowCamera;
 	}
 	void ShadowPCF::PreDraw()
@@ -71,17 +83,23 @@ namespace Themp
 			l_D3D->m_DevCon->Unmap(m_LightBuffer, NULL);
 		}
 	}
+	void ShadowPCF::SetMultiSample(int num)
+	{
+		if (m_ShadowTexture)
+		{
+			delete m_ShadowTexture;
+			m_ShadowTexture = nullptr;
+		}
+		m_ShadowTexture = new RenderTexture(ATLAS_RESOLUTION, ATLAS_RESOLUTION, RenderTexture::TextureType::DepthTex, num);
+	}
+
 	void ShadowPCF::SetDirty()
 	{
 		m_DirtyLights = true;
-		for (size_t i = 0; i < NUM_LIGHTS*3; i++)
+		for (size_t i = 0; i < NUM_LIGHTS * 3; i++)
 		{
 			m_ShadowMaps[i].LightIsDirty = true;
 		}
-	}
-	void ShadowPCF::SetMultiSample(int num)
-	{
-		m_ShadowAtlas->SetMultiSample(num);
 	}
 
 	void ShadowPCF::SetLightDirty(int type, int index)
@@ -100,20 +118,11 @@ namespace Themp
 			break;
 		}
 	}
-	void ShadowPCF::AddDirectionalLight(XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color, int resolution)
-	{
-		m_DirtyLights = true;
-		m_LightConstantBufferData.numDir = m_LightConstantBufferData.numDir < NUM_LIGHTS ? m_LightConstantBufferData.numDir + 1 : m_LightConstantBufferData.numDir;
-		m_ShadowMaps[m_LightConstantBufferData.numDir-1].LightIsDirty = true;
-		m_LightConstantBufferData.dirLights[m_LightConstantBufferData.numDir-1].position = pos;
-		m_LightConstantBufferData.dirLights[m_LightConstantBufferData.numDir-1].direction = dir;
-		m_LightConstantBufferData.dirLights[m_LightConstantBufferData.numDir-1].color = color;
-		m_LightConstantBufferData.dirLights[m_LightConstantBufferData.numDir - 1].textureOffset = m_ShadowAtlas->ObtainTextureArea(resolution);
-	}
-	void ShadowPCF::SetDirectionalLight(int index, XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color)
+	void ShadowPCF::SetDirectionalLight(int index, bool enabled, XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color)
 	{
 		m_DirtyLights = true;
 		m_ShadowMaps[index].LightIsDirty = true;
+		m_LightConstantBufferData.dirLights[index].enabled = enabled;
 		m_LightConstantBufferData.dirLights[index].position = pos;
 		m_LightConstantBufferData.dirLights[index].direction = dir;
 		m_LightConstantBufferData.dirLights[index].color = color;
@@ -127,7 +136,7 @@ namespace Themp
 		l_D3D->m_DevCon->IASetInputLayout(m_ShadowMaterial->m_InputLayout);
 
 		l_D3D->m_DevCon->RSSetState(l_D3D->m_RasterizerState);
-		l_D3D->m_DevCon->OMSetRenderTargets(0, nullptr, m_ShadowAtlas->m_DepthStencilView);
+		l_D3D->m_DevCon->OMSetRenderTargets(0, nullptr, m_ShadowTexture->m_DepthStencilView);
 
 		DrawDirectionalShadow();
 		DrawPointShadow();
@@ -151,7 +160,7 @@ namespace Themp
 			l_D3D->m_ShaderResourceViews[i] = l_D3D->m_RenderTextures[i]->m_ShaderResourceView;
 		}
 		l_D3D->m_ShaderResourceViews[NUM_RENDER_TEXTURES] = l_D3D->m_DepthStencilSRV;
-		l_D3D->m_ShaderResourceViews[NUM_RENDER_TEXTURES + 1] = m_ShadowAtlas->m_ShaderResourceView;
+		l_D3D->m_ShaderResourceViews[NUM_RENDER_TEXTURES + 1] = m_ShadowTexture->m_ShaderResourceView;
 		l_D3D->m_ShaderResourceViews[NUM_RENDER_TEXTURES + 2] = l_D3D->DefaultMaterialSkybox->m_Textures[0]->m_View;
 		l_D3D->m_ShaderResourceViews[NUM_RENDER_TEXTURES + 3] = l_D3D->DefaultMaterialSkybox->m_Textures[1]->m_View;
 		l_D3D->m_ShaderResourceViews[NUM_RENDER_TEXTURES + 4] = l_D3D->DefaultMaterialSkybox->m_Textures[2]->m_View;
@@ -173,7 +182,7 @@ namespace Themp
 		l_D3D->SetLightConstantBuffer(m_LightBuffer);
 		l_D3D->PSUploadConstantBuffersToGPU();
 
-		l_D3D->m_DevCon->DrawIndexed(l_D3D->m_FullScreenQuad->m_Meshes[0]->numIndices, 0, 0);
+		l_D3D->m_DevCon->DrawIndexed(l_D3D->m_FullScreenQuad->m_Meshes[0]->m_NumIndices, 0, 0);
 	}
 	void ShadowPCF::DrawDirectionalShadow()
 	{
@@ -188,7 +197,7 @@ namespace Themp
 		for (size_t i = 0; i < m_LightConstantBufferData.numDir; i++)
 		{
 			LightShadowMap* s = &m_ShadowMaps[i];
-			if (s->LightIsDirty)
+			if (s->LightIsDirty && s->l->enabled)
 			{
 				DirectionalLight* l = &m_LightConstantBufferData.dirLights[i];
 
@@ -198,7 +207,7 @@ namespace Themp
 				l_D3D->m_DevCon->VSSetShader(m_ShadowClearMaterial->m_VertexShader, 0, 0);
 				l_D3D->m_DevCon->GSSetShader(nullptr, 0, 0);
 				l_D3D->SetViewPort(l->textureOffset.x, l->textureOffset.y, l->textureOffset.z, l->textureOffset.w);
-				l_D3D->m_FullScreenQuad->Draw(*l_D3D, true);
+				l_D3D->m_FullScreenQuad->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 
 				//restore shader
 				l_D3D->m_DevCon->OMSetDepthStencilState(l_D3D->m_DepthStencilState, 1);
@@ -212,7 +221,7 @@ namespace Themp
 
 				for (int j = 0; j < l_Game->m_Objects3D.size(); ++j)
 				{
-					l_Game->m_Objects3D[j]->Draw(*l_D3D, true);
+					l_Game->m_Objects3D[j]->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 				}
 				s->LightIsDirty = false;
 			}
@@ -228,7 +237,7 @@ namespace Themp
 		{
 			int shadowMapIndex = m_LightConstantBufferData.numDir + i;
 			LightShadowMap* s = &m_ShadowMaps[shadowMapIndex];
-			if (s->LightIsDirty)
+			if (s->LightIsDirty && s->l->enabled)
 			{
 				PointLight* l = &m_LightConstantBufferData.pointLights[i];
 				D3D11_VIEWPORT vps[6];
@@ -250,7 +259,7 @@ namespace Themp
 
 					//clear current viewport
 					l_D3D->SetViewPort(l->textureOffset[j].x, l->textureOffset[j].y, l->textureOffset[j].z, l->textureOffset[j].w);
-					l_D3D->m_FullScreenQuad->Draw(*l_D3D, true);
+					l_D3D->m_FullScreenQuad->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 				}
 			}
 		}
@@ -269,7 +278,7 @@ namespace Themp
 			{
 				int shadowMapIndex = m_LightConstantBufferData.numDir + i;
 				LightShadowMap* s = &m_ShadowMaps[shadowMapIndex];
-				if (s->LightIsDirty)
+				if (s->LightIsDirty && s->l->enabled)
 				{
 					PointLight* l = &m_LightConstantBufferData.pointLights[i];
 					D3D11_VIEWPORT vps[6];
@@ -291,7 +300,7 @@ namespace Themp
 
 					for (int j = 0; j < l_Game->m_Objects3D.size(); ++j)
 					{
-						l_Game->m_Objects3D[j]->Draw(*l_D3D, true);
+						l_Game->m_Objects3D[j]->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 					}
 					s->LightIsDirty = false;
 				}
@@ -304,7 +313,7 @@ namespace Themp
 			{
 				int shadowMapIndex = m_LightConstantBufferData.numDir + i;
 				LightShadowMap* s = &m_ShadowMaps[shadowMapIndex];
-				if (s->LightIsDirty)
+				if (s->LightIsDirty && s->l->enabled)
 				{
 					PointLight* l = &m_LightConstantBufferData.pointLights[i];
 					D3D11_VIEWPORT vp;
@@ -335,7 +344,7 @@ namespace Themp
 
 					for (int j = 0; j < l_Game->m_Objects3D.size(); ++j)
 					{
-						l_Game->m_Objects3D[j]->Draw(*l_D3D, true);
+						l_Game->m_Objects3D[j]->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 					}
 					//////////////
 
@@ -352,7 +361,7 @@ namespace Themp
 
 					for (int j = 0; j < l_Game->m_Objects3D.size(); ++j)
 					{
-						l_Game->m_Objects3D[j]->Draw(*l_D3D, true);
+						l_Game->m_Objects3D[j]->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 					}
 					//////////////
 
@@ -369,7 +378,7 @@ namespace Themp
 
 					for (int j = 0; j < l_Game->m_Objects3D.size(); ++j)
 					{
-						l_Game->m_Objects3D[j]->Draw(*l_D3D, true);
+						l_Game->m_Objects3D[j]->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 					}
 					//////////////
 
@@ -386,7 +395,7 @@ namespace Themp
 
 					for (int j = 0; j < l_Game->m_Objects3D.size(); ++j)
 					{
-						l_Game->m_Objects3D[j]->Draw(*l_D3D, true);
+						l_Game->m_Objects3D[j]->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 					}
 					//////////////
 
@@ -403,7 +412,7 @@ namespace Themp
 
 					for (int j = 0; j < l_Game->m_Objects3D.size(); ++j)
 					{
-						l_Game->m_Objects3D[j]->Draw(*l_D3D, true);
+						l_Game->m_Objects3D[j]->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 					}
 					//////////////
 
@@ -419,7 +428,7 @@ namespace Themp
 
 					for (int j = 0; j < l_Game->m_Objects3D.size(); ++j)
 					{
-						l_Game->m_Objects3D[j]->Draw(*l_D3D, true);
+						l_Game->m_Objects3D[j]->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 					}
 					//////////////
 					s->LightIsDirty = false;
@@ -435,7 +444,7 @@ namespace Themp
 		{
 			int shadowMapIndex = m_LightConstantBufferData.numPoint + m_LightConstantBufferData.numDir + i;
 			LightShadowMap* s = &m_ShadowMaps[shadowMapIndex];
-			if (s->LightIsDirty)
+			if (s->LightIsDirty && s->l->enabled)
 			{
 				SpotLight* l = &m_LightConstantBufferData.spotLights[i];
 
@@ -446,7 +455,7 @@ namespace Themp
 				l_D3D->m_DevCon->VSSetShader(m_ShadowClearMaterial->m_VertexShader, 0, 0);
 				l_D3D->m_DevCon->GSSetShader(nullptr, 0, 0);
 				l_D3D->SetViewPort(l->textureOffset.x, l->textureOffset.y, l->textureOffset.z, l->textureOffset.w);
-				l_D3D->m_FullScreenQuad->Draw(*l_D3D, true);
+				l_D3D->m_FullScreenQuad->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 
 				//restore shadow rendering and draw
 				l_D3D->m_DevCon->OMSetDepthStencilState(l_D3D->m_DepthStencilState, 1);
@@ -464,7 +473,7 @@ namespace Themp
 
 				for (int j = 0; j < l_Game->m_Objects3D.size(); ++j)
 				{
-					l_Game->m_Objects3D[j]->Draw(*l_D3D, true);
+					l_Game->m_Objects3D[j]->Draw(*l_D3D, Mesh::DrawPass::SHADOW);
 				}
 				s->LightIsDirty = false;
 			}
@@ -532,7 +541,7 @@ namespace Themp
 		m_ShadowCamera->SetPosition(l->position.x, l->position.y, l->position.z);
 		m_ShadowCamera->SetProjection(Camera::CameraType::Orthographic);
 		m_ShadowCamera->SetLookTo(XMFLOAT3(l->direction.x, l->direction.y, l->direction.z), XMFLOAT3(0, 1, 0));
-		m_ShadowCamera->SetOrtho(150, 150);
+		
 		m_ShadowCamera->UpdateMatrices();
 		l->lightprojmatrix = m_ShadowCamera->m_CameraConstantBufferData.projectionMatrix;
 		l->lightviewmatrix = m_ShadowCamera->m_CameraConstantBufferData.viewMatrix;

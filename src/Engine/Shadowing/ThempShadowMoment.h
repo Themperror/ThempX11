@@ -14,7 +14,7 @@ namespace Themp
 		virtual void DrawShadow();
 		virtual void DrawLight();
 		virtual void PreDraw();
-		virtual void SetDirty();
 		virtual void SetMultiSample(int num);
+		virtual void SetDirty();
 	};
 };

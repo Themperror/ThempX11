@@ -7,10 +7,12 @@ namespace Themp
 	class Camera;
 	class Material;
 	class ShadowAtlas;
+	class RenderTexture;
 	class ShadowPCF : Shadow
 	{
 		struct LightData
 		{
+			uint32_t enabled, dummy0, dummy1, dummy2;
 			XMFLOAT4 position;
 			XMFLOAT4 color;
 			XMFLOAT4X4 lightprojmatrix;
@@ -55,14 +57,11 @@ namespace Themp
 		virtual void DrawShadow();
 		virtual void DrawLight();
 		virtual void PreDraw();
-		virtual void SetDirty();
 		virtual void SetMultiSample(int num);
+		virtual void SetDirty();
 
 		void SetLightDirty(int type, int index);
-
-		void AddDirectionalLight(XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color, int resolution);
-
-		void SetDirectionalLight(int index, XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color);
+		void SetDirectionalLight(int index, bool enabled, XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color);
 
 		void DrawDirectionalShadow();
 		void DrawPointShadow();
@@ -75,6 +74,7 @@ namespace Themp
 		bool m_DirtyLights = true;
 		Camera* m_ShadowCamera = nullptr;
 		ShadowAtlas* m_ShadowAtlas = nullptr;
+		RenderTexture* m_ShadowTexture = nullptr;
 		Material* m_ShadowMaterial = nullptr;
 		Material* m_ShadowClearMaterial = nullptr;
 		Material* m_PCFLightingMaterial = nullptr;
