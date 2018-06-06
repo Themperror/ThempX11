@@ -9,6 +9,7 @@
 #include "ThempShadowAtlas.h"
 #include "ThempGUI.h"
 #include "ThempCamera.h"
+#include "ThempDebugDraw.h"
 #include "Shadowing\ThempShadowUnfiltered.h"
 #include "Shadowing\ThempShadowPCF.h"
 #include "Shadowing\ThempShadowCascade.h"
@@ -22,7 +23,7 @@ using namespace DirectX;
 
 namespace Themp
 {
-	XMFLOAT3 Normalize(XMFLOAT3 v)
+	XMFLOAT3 Normalize(const XMFLOAT3& v)
 	{
 		XMVECTOR x = XMLoadFloat3(&v);
 		x = XMVector3Normalize(x);
@@ -30,7 +31,7 @@ namespace Themp
 		XMStoreFloat3(&r, x);
 		return r;
 	}
-	XMFLOAT3 XMFLOAT3Add(XMFLOAT3 a, XMFLOAT3 b)
+	XMFLOAT3 XMFLOAT3Add(const XMFLOAT3& a, const XMFLOAT3& b)
 	{
 		return XMFLOAT3(a.x + b.x, a.y + b.y, a.z + b.z);
 	}
@@ -52,11 +53,11 @@ namespace Themp
 	ID3D11SamplerState* D3D::DefaultTextureSampler;
 
 	//cannot place in the header due to heritance
-	ShadowUnfiltered* m_ShadowUnfiltered;
-	ShadowPCF* m_ShadowPCF;
-	ShadowCascade* m_ShadowCascade;
-	ShadowVariance* m_ShadowVariance;
-	ShadowMoment* m_ShadowMoment;
+	ShadowUnfiltered* m_ShadowUnfiltered = nullptr;
+	ShadowPCF* m_ShadowPCF = nullptr;
+	ShadowCascade* m_ShadowCascade = nullptr;
+	ShadowVariance* m_ShadowVariance = nullptr;
+	ShadowMoment* m_ShadowMoment = nullptr;
 
 
 	//0 object
@@ -198,7 +199,7 @@ namespace Themp
 
 		m_Device->CreateRasterizerState(&rDesc, &m_RasterizerState);
 
-		rDesc.CullMode = D3D11_CULL_MODE::D3D11_CULL_FRONT;
+		rDesc.CullMode = D3D11_CULL_MODE::D3D11_CULL_BACK;
 		m_Device->CreateRasterizerState(&rDesc, &m_ShadowRasterizerState);
 
 		rDesc.FillMode = D3D11_FILL_MODE::D3D11_FILL_WIREFRAME;
@@ -213,7 +214,7 @@ namespace Themp
 			"",
 		};
 		std::vector<uint8_t> defaultTypes = { 1,((uint8_t)(-1)),((uint8_t)(-1)),((uint8_t)(-1)) };
-		D3D::DefaultMaterial = Resources::TRes->GetMaterial("G-Buffer", defaultTextures, defaultTypes, "Deferred", true, true, false);
+		D3D::DefaultMaterial = Resources::TRes->GetMaterial("G-Buffer", defaultTextures, defaultTypes, "Deferred",  false);
 
 		defaultTypes[0] = Material::DIFFUSE;
 		defaultTypes[1] = Material::NORMALS;
@@ -223,15 +224,15 @@ namespace Themp
 		defaultTextures[1] = "DefaultNormal.dds";
 		defaultTextures[2] = "DefaultPBR.dds";
 		defaultTextures[3] = "DefaultMisc.dds";
-		D3D::DefaultPostProcess = Resources::TRes->GetMaterial("PostProcess", "", "PostProcess", true, true, false);
+		D3D::DefaultPostProcess = Resources::TRes->GetMaterial("PostProcess", "", "PostProcess",  false);
 		std::vector<std::string> skyboxTextures = { "../environmentmaps/Ice_Lake_Cube_Full.dds","../environmentmaps/Ice_Lake_Cube_IBL.dds","../environmentmaps/Tucker_Wreck.dds","../environmentmaps/Tucker_Wreck_IBL.dds" };
 
-		D3D::DefaultMaterialSkybox = Resources::TRes->GetMaterial("Skybox", skyboxTextures, defaultTypes, "Skybox", true, true, false);
+		D3D::DefaultMaterialSkybox = Resources::TRes->GetMaterial("Skybox", skyboxTextures, defaultTypes, "Skybox", false);
 		System::Print("D3D11 Initialisation success!");
 
 		m_FullScreenQuad = new Object3D();
 		Resources::TRes->m_3DObjects.push_back(m_FullScreenQuad);
-		m_FullScreenQuad->CreateQuad("ScreenSpace", true, true, false);
+		m_FullScreenQuad->CreateQuad("ScreenSpace", false);
 		m_Skybox = Resources::TRes->GetModel("Skysphere.bin", true);
 		if (m_Skybox)
 		{
@@ -248,13 +249,19 @@ namespace Themp
 			System::Print("Skybox model not found!!");
 		}
 
-		m_ShadowUnfiltered = new ShadowUnfiltered();
-		m_ShadowPCF = new ShadowPCF();
-		m_ShadowCascade = new ShadowCascade();
-		m_ShadowVariance = new ShadowVariance();
-		m_ShadowMoment = new ShadowMoment();
 
+#ifdef _DEBUG
+		DebugDraw::DefaultLineMaterial = Resources::TRes->GetMaterial("DebugLine", "", "DebugLine", false, DebugDraw::DefaultLineInputLayoutDesc, 2, false);
+#endif // _DEBUG
 
+		//m_ShadowUnfiltered = new ShadowUnfiltered();
+		//m_ShadowPCF = new ShadowPCF();
+		//m_ShadowCascade = new ShadowCascade(m_ConstantBufferData.num_cascades);
+		//m_ShadowCascade->SetCascade(m_ConstantBufferData.num_cascades, 0.1, 500);
+		//m_ShadowVariance = new ShadowVariance();
+		//m_ShadowMoment = new ShadowMoment();
+
+		SetShadowType(0);
 		SetMultiSample(multisample);
 		return true;
 	}
@@ -442,6 +449,7 @@ namespace Themp
 			Themp::System::tSys->m_SVars["WindowSizeY"] = vp.Height;
 			m_ConstantBufferData.screenHeight = vp.Width;
 			m_ConstantBufferData.screenWidth = vp.Height;
+			m_ConstantBufferData.shadow_atlas_size = ATLAS_RESOLUTION;
 			dirtySystemBuffer = true;
 		}
 	}
@@ -454,6 +462,38 @@ namespace Themp
 	void D3D::SetShadowType(int type)
 	{
 		m_ShadowType = type;
+
+		if (m_ShadowUnfiltered)	delete m_ShadowUnfiltered;
+		if (m_ShadowPCF)		delete m_ShadowPCF;
+		if (m_ShadowCascade)	delete m_ShadowCascade;
+		if (m_ShadowVariance)	delete m_ShadowVariance;
+		if (m_ShadowMoment)		delete m_ShadowMoment;
+
+		m_ShadowUnfiltered = nullptr;
+		m_ShadowPCF = nullptr;
+		m_ShadowCascade = nullptr;
+		m_ShadowVariance = nullptr;
+		m_ShadowMoment = nullptr;
+
+		switch (m_ShadowType)
+		{
+		case 0:
+			m_ShadowUnfiltered = new ShadowUnfiltered();
+			break;
+		case 1:
+			m_ShadowPCF = new ShadowPCF();
+			break;
+		case 2:
+			m_ShadowCascade = new ShadowCascade(m_ConstantBufferData.num_cascades);
+			m_ShadowCascade->SetCascade(m_ConstantBufferData.num_cascades);
+			break;
+		case 3:
+			m_ShadowVariance = new ShadowVariance();
+			break;
+		case 4:
+			m_ShadowMoment = new ShadowMoment();
+			break;
+		}
 	}
 	bool D3D::SetMultiSample(int num)
 	{
@@ -493,27 +533,25 @@ namespace Themp
 		if (m_ShadowMoment)		m_ShadowMoment->SetDirty();
 		return true;
 	}
-	void D3D::AddDirectionalLight(XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color, int resolution)
-	{
-		m_ShadowUnfiltered->AddDirectionalLight(pos, dir, color, resolution);
-		m_ShadowPCF->AddDirectionalLight(pos, dir, color, resolution);
-		//m_ShadowCascade->AddDirectionalLight(pos, dir, color);
-		//m_ShadowVariance->AddDirectionalLight(pos, dir, color);
-		//m_ShadowMoment->AddDirectionalLight(pos, dir, color);
-	}
 	void D3D::SetLightDirty(LightType type, int index)
 	{
-		m_ShadowUnfiltered->SetLightDirty(type, index);
-		m_ShadowPCF->SetLightDirty(type, index);
-		//m_ShadowCascade->SetLightDirty(type, index);
-		//m_ShadowVariance->SetLightDirty(type, index);
-		//m_ShadowMoment->SetLightDirty(type, index);
+		if (m_ShadowUnfiltered)	m_ShadowUnfiltered->SetLightDirty(type, index);
+		if (m_ShadowPCF)		m_ShadowPCF->SetLightDirty(type, index);
+		if (m_ShadowCascade)	m_ShadowCascade->SetLightDirty(type, index);
+		//if (m_ShadowVariance)	m_ShadowVariance->SetLightDirty(type, index);
+		//if (m_ShadowMoment)		m_ShadowMoment->SetLightDirty(type, index);
 	}
-	void D3D::SetDirectionalLight(int index, XMFLOAT4 pos , XMFLOAT4 dir, XMFLOAT4 color)
+	void D3D::SetDirectionalLight(int index, bool enabled, XMFLOAT4 pos , XMFLOAT4 dir, XMFLOAT4 color)
 	{
-		m_ShadowUnfiltered->SetDirectionalLight(index, pos, dir, color);
-		m_ShadowPCF->SetDirectionalLight(index, pos, dir, color);
-		//m_ShadowCascade->SetDirectionalLight(index, pos, dir, color);
+		if (m_ShadowUnfiltered)	m_ShadowUnfiltered->SetDirectionalLight(index, enabled, pos, dir, color);
+		if (m_ShadowPCF)		m_ShadowPCF->SetDirectionalLight(index, enabled, pos, dir, color);
+		if (m_ShadowCascade)	m_ShadowCascade->SetDirectionalLight(index, enabled, pos, dir, color);
+		//if (m_ShadowVariance)
+		//if (m_ShadowMoment)
+	}
+	void D3D::SetNumberCascades(int numCascades)
+	{
+		if (m_ShadowCascade) m_ShadowCascade->SetCascade(numCascades);
 	}
 	void D3D::DrawGBufferPass(Game & game)
 	{
@@ -530,7 +568,6 @@ namespace Themp
 		m_DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		m_DevCon->IASetInputLayout(D3D::DefaultMaterial->m_InputLayout); //skybox layout doesn't differ so this is fine
 
-
 		//Skybox
 		m_DevCon->OMSetDepthStencilState(m_SkyboxDepthStencilState, 1);
 		m_DevCon->PSSetShaderResources(0, 2, D3D::DefaultMaterialSkybox->m_Views);
@@ -540,20 +577,25 @@ namespace Themp
 
 		m_Skybox->m_Position = game.m_Camera->GetPosition();
 		m_Skybox->isDirty = true;
-		m_Skybox->Draw(_this, false);
+		m_Skybox->Draw(_this, Mesh::DrawPass::GBUFFER);
 
 		//Models
 		m_DevCon->OMSetDepthStencilState(m_DepthStencilState, 1);
 		m_DevCon->PSSetShaderResources(0, 4, D3D::DefaultMaterial->m_Views);
+
 		m_DevCon->PSSetShader(D3D::DefaultMaterial->m_PixelShader, 0, 0);
 		m_DevCon->VSSetShader(D3D::DefaultMaterial->m_VertexShader, 0, 0);
 		m_DevCon->GSSetShader(D3D::DefaultMaterial->m_GeometryShader, 0, 0);
 
-
 		for (int i = 0; i < game.m_Objects3D.size(); ++i)
 		{
-			game.m_Objects3D[i]->Draw(_this,false);
+			game.m_Objects3D[i]->Draw(_this, Mesh::DrawPass::GBUFFER);
 		}
+
+#ifdef _DEBUG
+		DebugDraw::Draw(m_Device, m_DevCon);
+#endif // _DEBUG
+
 	}
 	Camera* shadowCamera; 
 	void D3D::DrawShadowMaps(Themp::Game& game)
@@ -630,7 +672,7 @@ namespace Themp
 		SetSystemConstantBuffer(m_CBuffer);
 		PSUploadConstantBuffersToGPU();
 
-		m_DevCon->DrawIndexed(m_FullScreenQuad->m_Meshes[0]->numIndices, 0, 0);
+		m_DevCon->DrawIndexed(m_FullScreenQuad->m_Meshes[0]->m_NumIndices, 0, 0);
 	}
 	void D3D::Draw(Themp::Game& game)
 	{
@@ -640,6 +682,7 @@ namespace Themp
 			m_DevCon->ClearRenderTargetView(m_RenderTextures[i]->m_RenderTarget, ClearColor);
 		}
 		m_DevCon->ClearRenderTargetView(m_BackBuffer, ClearColor);
+		m_DevCon->ClearRenderTargetView(m_MainRender->m_RenderTarget, ClearColor);
 		m_DevCon->ClearDepthStencilView(m_DepthStencilView, D3D11_CLEAR_FLAG::D3D11_CLEAR_DEPTH, 1.0f, 0);
 
 		//Draw all geometry to the GBuffer //positions, normals, etc
@@ -657,11 +700,11 @@ namespace Themp
 		VSUploadConstantBuffersToGPUNull();
 		PSUploadConstantBuffersToGPUNull();
 		GSUploadConstantBuffersToGPUNull();
-		for (size_t i = 0; i < NUM_SHADER_RESOURCE_VIEWS; i++)
+		for (size_t i = 0; i < 32; i++)
 		{
 			m_ShaderResourceViews[i] = nullptr;
 		}
-		m_DevCon->PSSetShaderResources(0, NUM_SHADER_RESOURCE_VIEWS, m_ShaderResourceViews);
+		m_DevCon->PSSetShaderResources(0, 32, m_ShaderResourceViews);
 	}
 	void D3D::DrawImGUI()
 	{
@@ -673,6 +716,10 @@ namespace Themp
 	}
 	D3D::~D3D()
 	{
+#if _DEBUG
+		DebugDraw::Destroy();
+#endif
+
 		if (Themp::System::tSys->m_SVars.find("Fullscreen")->second == 1)
 		{
 			m_Swapchain->SetFullscreenState(FALSE, NULL);  // switch to windowed mode
@@ -692,11 +739,11 @@ namespace Themp
 		PSUploadConstantBuffersToGPUNull();
 		GSUploadConstantBuffersToGPUNull();
 
-		delete m_ShadowUnfiltered;
-		delete m_ShadowPCF;
-		delete m_ShadowCascade;
-		delete m_ShadowVariance;
-		delete m_ShadowMoment;
+		if (m_ShadowUnfiltered)	delete m_ShadowUnfiltered;
+		if (m_ShadowPCF)		delete m_ShadowPCF;
+		if (m_ShadowCascade)	delete m_ShadowCascade;
+		if (m_ShadowVariance)	delete m_ShadowVariance;
+		if (m_ShadowMoment)		delete m_ShadowMoment;
 
 		CLEAN(m_OMBlendState);
 		CLEAN(m_DepthStencil);
@@ -765,7 +812,7 @@ namespace Themp
 	void D3D::VSUploadConstantBuffersToGPU()
 	{
 		if (D3D::ConstantBuffers[1] == nullptr) System::Print("No Camera active in scene");
-		m_DevCon->VSSetConstantBuffers(0, 2, D3D::ConstantBuffers);
+		m_DevCon->VSSetConstantBuffers(0, 3, D3D::ConstantBuffers);
 	}
 	void D3D::VSUploadConstantBuffersToGPUNull()
 	{

@@ -1,55 +1,9 @@
 #include "ThempSystem.h"
 #include "ThempCamera.h"
 #include "ThempD3D.h"
+#include "ThempFunctions.h"
 namespace Themp
 {
-	DirectX::XMFLOAT3 operator+=(DirectX::XMFLOAT3& a, const DirectX::XMFLOAT3& b)
-	{
-		a = DirectX::XMFLOAT3(a.x + b.x, a.y + b.y, a.z + b.z);
-		return a;
-	}
-	DirectX::XMFLOAT3 operator+(const DirectX::XMFLOAT3& a, const DirectX::XMFLOAT3& b)
-	{
-		return DirectX::XMFLOAT3(a.x + b.x, a.y + b.y, a.z + b.z);
-	}
-	DirectX::XMFLOAT3 operator-(const DirectX::XMFLOAT3& a, const DirectX::XMFLOAT3& b)
-	{
-		return DirectX::XMFLOAT3(a.x - b.x, a.y - b.y, a.z - b.z);
-	}
-	DirectX::XMFLOAT3 operator-=(DirectX::XMFLOAT3& a, const DirectX::XMFLOAT3& b)
-	{
-		a = DirectX::XMFLOAT3(a.x - b.x, a.y - b.y, a.z - b.z);
-		return a;
-	}
-	DirectX::XMFLOAT3 operator*=(DirectX::XMFLOAT3& a, const float& b)
-	{
-		a = DirectX::XMFLOAT3(a.x * b, a.y * b, a.z * b);
-		return a;
-	}
-	DirectX::XMFLOAT3 operator*(const DirectX::XMFLOAT3& a, const float& b)
-	{
-		return DirectX::XMFLOAT3(a.x * b, a.y * b, a.z * b);
-	}
-	DirectX::XMFLOAT3 operator/(const DirectX::XMFLOAT3& a, const float& b)
-	{
-		return DirectX::XMFLOAT3(a.x / b, a.y / b, a.z / b);
-	}
-	DirectX::XMFLOAT3 Normalize(const DirectX::XMFLOAT3& a)
-	{
-		XMVECTOR v = XMLoadFloat3(&a);
-		XMVector3Normalize(v);
-		XMFLOAT3 res;
-		XMStoreFloat3(&res, v);
-		return res;
-	}
-	XMFLOAT3 Clamp(const DirectX::XMFLOAT3& val, float a_min, float a_max)
-	{
-		return XMFLOAT3(
-			min(max(val.x, a_min), a_max), 
-			min(max(val.y, a_min), a_max),
-			min(max(val.z, a_min), a_max)
-		);
-	}
 	Camera::Camera()
 	{
 		// Fill in a buffer description.
@@ -69,7 +23,9 @@ namespace Themp
 
 		// Create the buffer.
 		Themp::System::tSys->m_D3D->m_Device->CreateBuffer(&cbDesc, &InitData, &m_CameraConstantBuffer);
-		SetFoV(90);
+		SetFoV(75);
+		m_Near = 0.1f;
+		m_Far = 1000.0f;
 		SetAspectRatio(1.0);
 		Rotate(0, 0);
 		SetPosition(0, 0, 0);
@@ -166,18 +122,21 @@ namespace Themp
 	{
 		isDirty = true;
 		m_Position = XMFLOAT3(x, y, z);
+		m_Target = m_Position;
 	}
 
 	void Camera::SetPosition(XMFLOAT3 pos)
 	{
 		isDirty = true;
 		m_Position = pos;
+		m_Target = m_Position;
 	}
 
 	void Camera::SetPosition(XMFLOAT4 pos)
 	{
 		isDirty = true;
 		m_Position = XMFLOAT3(pos.x,pos.y,pos.z);
+		m_Target = m_Position;
 	}
 	
 	void Camera::SetLookTo(XMFLOAT3 forward, XMFLOAT3 up, XMFLOAT3 right)
@@ -229,6 +188,14 @@ namespace Themp
 		m_CamType = t;
 		isDirty = true;
 	}
+	void Camera::SetNear(float nearVal)
+	{
+		m_Near = nearVal;
+	}
+	void Camera::SetFar(float farVal)
+	{
+		m_Far = farVal;
+	}
 	void Camera::CalcDirs()
 	{
 		XMVECTOR quat = XMLoadFloat4(&m_Quaternion);
@@ -275,7 +242,7 @@ namespace Themp
 		}
 
 		//Delta Move, Clamp so we do not over shoot.
-		const XMFLOAT3 DeltaMove = Dist * max(min(DeltaTime * InterpSpeed, 0.f), 1.0);
+		const XMFLOAT3 DeltaMove = Dist * std::max(std::min(DeltaTime * InterpSpeed, 0.f), 1.0f);
 
 		return Current + DeltaMove;
 	}
@@ -299,7 +266,7 @@ namespace Themp
 			}
 			dirs[i] = false;
 		}
-		m_Position = InterpTo(m_Position, m_Target, dt, 100);
+		m_Position = InterpTo(m_Position, m_Target, dt, 0.1f);
 
 	}
 	void Camera::UpdateMatrices()
@@ -314,14 +281,14 @@ namespace Themp
 
 			if (m_CamType == CameraType::Perspective)
 			{
-				projectionMatrix = XMMatrixPerspectiveFovLH(m_FoV, m_AspectRatio, 0.1f, 1000.0f);
+				projectionMatrix = XMMatrixPerspectiveFovLH(m_FoV, m_AspectRatio, m_Near, m_Far);
 				viewMatrix = XMMatrixLookToLH(XMLoadFloat3(&m_Position), XMLoadFloat3(&m_Forward), XMLoadFloat3(&m_Up));
 				invProjectionMatrix = XMMatrixInverse(nullptr, projectionMatrix);
 				invViewMatrix = XMMatrixInverse(nullptr, viewMatrix);
 			}
 			else
 			{
-				projectionMatrix = XMMatrixOrthographicLH(m_OrthoWidth,m_OrthoHeight, 0.1f, 1000.0f);
+				projectionMatrix = XMMatrixOrthographicLH(m_OrthoWidth,m_OrthoHeight, m_Near, m_Far);
 				viewMatrix = XMMatrixLookToLH(XMLoadFloat3(&m_Position), XMLoadFloat3(&m_Forward), XMLoadFloat3(&m_Up));
 				invProjectionMatrix = XMMatrixInverse(nullptr, projectionMatrix);
 				invViewMatrix = XMMatrixInverse(nullptr, viewMatrix);
@@ -360,9 +327,25 @@ namespace Themp
 		XMStoreFloat4x4(&MVP, XMMatrixInverse(nullptr,(XMMatrixMultiply(viewMatrix, projectionMatrix))));
 		return MVP;
 	}
+	XMFLOAT4X4 Camera::GetViewMatrix()
+	{
+		XMVECTOR pos = XMLoadFloat3(&m_Position), dir = XMLoadFloat3(&m_Forward), up = XMLoadFloat3(&m_Up);
+		
+		XMMATRIX view = XMMatrixLookToLH(pos, dir, up);
+		XMFLOAT4X4 res;
+		XMStoreFloat4x4(&res, view);
+		return res;
+	}
 	XMFLOAT4X4 Camera::GetOrthoProjectionMatrix(float nearPlane, float farPlane)
 	{
-		XMMATRIX proj = XMMatrixPerspectiveFovLH(m_FoV, m_AspectRatio, nearPlane, farPlane);
+		XMMATRIX proj = XMMatrixOrthographicLH(m_OrthoWidth, m_OrthoHeight, nearPlane, farPlane);
+		XMFLOAT4X4 res;
+		XMStoreFloat4x4(&res, proj);
+		return res;
+	}
+	XMFLOAT4X4 Camera::GetPerspectiveProjectionMatrix()
+	{
+		XMMATRIX proj = XMMatrixPerspectiveFovLH(m_FoV,m_AspectRatio,m_Near,m_Far);
 		XMFLOAT4X4 res;
 		XMStoreFloat4x4(&res, proj);
 		return res;

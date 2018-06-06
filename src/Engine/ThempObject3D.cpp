@@ -5,6 +5,7 @@
 #include "ThempD3D.h"
 #include "ThempResources.h"
 #include <DirectXMath.h>
+#include <algorithm>
 
 #include <iostream>
 using namespace DirectX;
@@ -29,7 +30,7 @@ namespace Themp
 		m_Rotation.y += dt*0.2;
 		isDirty = true;
 	}
-	void Object3D::Draw(D3D& d3d, bool lightPass)
+	void Object3D::Draw(D3D& d3d, int pass)
 	{
 		if (isDirty)
 		{
@@ -63,20 +64,16 @@ namespace Themp
 			d3d.m_DevCon->Map(m_ConstantBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
 			memcpy(ms.pData, &m_ConstantBufferData, sizeof(Object3DConstantBufferData));
 			d3d.m_DevCon->Unmap(m_ConstantBuffer, NULL);
-			
-			//printf("Updated Object buffer \n");
+
 			isDirty = false;
 		}
 		d3d.SetObject3DConstantBuffer(m_ConstantBuffer);
 
 		d3d.VSUploadConstantBuffersToGPU();
-		//if (m_Meshes.size() > 0)
-		//{
-		// m_Meshes[0]->SetGPUData(d3d); //setting material related data, and for now all meshes use the same material
-		//}
+
 		for (int i = 0; i < m_Meshes.size(); ++i)
 		{
-			m_Meshes[i]->Draw(d3d,lightPass);
+			m_Meshes[i]->Draw(d3d, (Mesh::DrawPass)pass);
 		}
 	}
 	void Object3D::ForceBufferUpdate()
@@ -112,21 +109,21 @@ namespace Themp
 		memcpy(ms.pData, &m_ConstantBufferData, sizeof(Object3DConstantBufferData));
 		D3D::s_D3D->m_DevCon->Unmap(m_ConstantBuffer, NULL);
 	}
-	void Object3D::CreateCube(std::string shader, bool vertexShader, bool pixelShader, bool geometryShader)
+	void Object3D::CreateCube(std::string shader, bool geometryShader)
 	{
 		Mesh* mesh = new Mesh();
 		Themp::System::tSys->m_Resources->m_Meshes.push_back(mesh);
-		mesh->vertices = new Vertex[8];
-		mesh->vertices[0] = { -0.5f, +0.5f, -0.5f  , 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,0.0f };
-		mesh->vertices[1] = { +0.5f, +0.5f, -0.5f  , 0.0f, 1.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
-		mesh->vertices[2] = { +0.5f, +0.5f,  0.5f  , 0.0f, 0.0f, 1.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,0.0f };
-		mesh->vertices[3] = { -0.5f, +0.5f,  0.5f  , 1.0f, 1.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,1.0f };
-		mesh->vertices[4] = { -0.5f, -0.5f,  0.5f  , 0.0f, 1.0f, 1.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,0.0f };
-		mesh->vertices[5] = { +0.5f, -0.5f,  0.5f  , 1.0f, 1.0f, 1.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
-		mesh->vertices[6] = { +0.5f, -0.5f, -0.5f  , 1.0f, 0.0f, 1.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,0.0f };
-		mesh->vertices[7] = { -0.5f, -0.5f, -0.5f  , 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,1.0f };
+		mesh->m_Vertices = new Vertex[8];
+		mesh->m_Vertices[0] = { -0.5f, +0.5f, -0.5f  , 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,0.0f };
+		mesh->m_Vertices[1] = { +0.5f, +0.5f, -0.5f  , 0.0f, 1.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
+		mesh->m_Vertices[2] = { +0.5f, +0.5f,  0.5f  , 0.0f, 0.0f, 1.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,0.0f };
+		mesh->m_Vertices[3] = { -0.5f, +0.5f,  0.5f  , 1.0f, 1.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,1.0f };
+		mesh->m_Vertices[4] = { -0.5f, -0.5f,  0.5f  , 0.0f, 1.0f, 1.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,0.0f };
+		mesh->m_Vertices[5] = { +0.5f, -0.5f,  0.5f  , 1.0f, 1.0f, 1.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
+		mesh->m_Vertices[6] = { +0.5f, -0.5f, -0.5f  , 1.0f, 0.0f, 1.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,0.0f };
+		mesh->m_Vertices[7] = { -0.5f, -0.5f, -0.5f  , 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,1.0f };
 
-		mesh->indices = new uint32_t[36]{
+		mesh->m_Indices = new uint32_t[36]{
 			0, 1, 2,
 			0, 2, 3,
 			4, 5, 6,
@@ -142,61 +139,94 @@ namespace Themp
 		};
 
 
-		mesh->numIndices = 36;
-		mesh->numVertices = 8;
+		mesh->m_NumIndices = 36;
+		mesh->m_NumVertices = 8;
 		mesh->ConstructVertexBuffer();
-		mesh->m_Material = Themp::System::tSys->m_Resources->GetMaterial("","DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
+		mesh->m_Material = Themp::System::tSys->m_Resources->GetMaterial("","DefaultDiffuse.dds", shader, geometryShader);
 		m_Meshes.push_back(mesh);
 	}
-	void Object3D::CreateTriangle(std::string shader, bool vertexShader, bool pixelShader, bool geometryShader)
+	void Object3D::CreateTriangle(std::string shader, bool geometryShader)
 	{
 		Mesh* mesh = new Mesh();
 		Themp::System::tSys->m_Resources->m_Meshes.push_back(mesh);
-		mesh->vertices = new Vertex[3];
-		mesh->vertices[0] = { -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,0.0f };
-		mesh->vertices[1] = { -0.5f, +0.5f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
-		mesh->vertices[2] = { +0.5f, +0.5f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,1.0f };
+		mesh->m_Vertices = new Vertex[3];
+		mesh->m_Vertices[0] = { -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,0.0f };
+		mesh->m_Vertices[1] = { -0.5f, +0.5f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
+		mesh->m_Vertices[2] = { +0.5f, +0.5f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,1.0f };
 
-		mesh->indices = new uint32_t[3]{
+		mesh->m_Indices = new uint32_t[3]{
 			// front face
 			0, 1, 2
 		};
 
 
-		mesh->numIndices = 3;
-		mesh->numVertices = 3;
+		mesh->m_NumIndices = 3;
+		mesh->m_NumVertices = 3;
 		mesh->ConstructVertexBuffer();
-		mesh->m_Material = Themp::System::tSys->m_Resources->GetMaterial("", "DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
+		mesh->m_Material = Themp::System::tSys->m_Resources->GetMaterial("", "DefaultDiffuse.dds", shader,  geometryShader);
 		m_Meshes.push_back(mesh);
 	}
-	void Object3D::CreateQuad(std::string shader, bool vertexShader, bool pixelShader, bool geometryShader)
+	void Object3D::CreateQuad(std::string shader, bool geometryShader)
 	{
 		Mesh* mesh = new Mesh();
 		Themp::System::tSys->m_Resources->m_Meshes.push_back(mesh);
-		mesh->vertices = new Vertex[4];
-		mesh->vertices[0] = { -1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,0.0f };
-		mesh->vertices[1] = { -1.0f, +1.0f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
-		mesh->vertices[2] = { +1.0f, +1.0f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,1.0f };
-		mesh->vertices[3] = { +1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,0.0f };
+		mesh->m_Vertices = new Vertex[4];
+		mesh->m_Vertices[0] = { -1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,0.0f };
+		mesh->m_Vertices[1] = { -1.0f, +1.0f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 0.0f,1.0f };
+		mesh->m_Vertices[2] = { +1.0f, +1.0f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,1.0f };
+		mesh->m_Vertices[3] = { +1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 0.0f,0.0f,0.0f,0.0f,0.0f,0.0f,0.0f, 1.0f,0.0f };
 
-		mesh->indices = new uint32_t[6]{
+		mesh->m_Indices = new uint32_t[6]{
 			// front face
 			0, 1, 2,
 			0, 2, 3
 		};
 
 
-		mesh->numIndices = 6;
-		mesh->numVertices = 4;
+		mesh->m_NumIndices = 6;
+		mesh->m_NumVertices = 4;
 		mesh->ConstructVertexBuffer();
-		mesh->m_Material = Themp::System::tSys->m_Resources->GetMaterial("", "DefaultDiffuse.dds", shader, vertexShader, pixelShader, geometryShader);
+		mesh->m_Material = Themp::System::tSys->m_Resources->GetMaterial("", "DefaultDiffuse.dds", shader, geometryShader);
 		m_Meshes.push_back(mesh);
 	}
 	void Object3D::Construct()
 	{
+		//sort meshes from big to small
+		//(Helps to Early-Z when drawing)
+		std::sort(m_Meshes.begin(), m_Meshes.end(),
+			[](const void* a, const void* b)
+		{
+			return (static_cast<const Themp::Mesh*>(a)->m_NumVertices > static_cast<const Themp::Mesh*>(b)->m_NumVertices);
+		}
+		);
+
+		//construct all vertex/index buffers (sets up the mesh ready for drawing)
 		for (size_t i = 0; i < m_Meshes.size(); i++)
 		{
 			m_Meshes[i]->ConstructVertexBuffer();
+		}
+		
+		//calculate the bounds of this object
+		//every mesh gets calculated on ConstructVertexBuffer();
+
+		m_BoundsMax.x = -FLT_MAX;
+		m_BoundsMax.y = -FLT_MAX;
+		m_BoundsMax.z = -FLT_MAX;
+		m_BoundsMin.x = FLT_MAX;
+		m_BoundsMin.y = FLT_MAX;
+		m_BoundsMin.z = FLT_MAX;
+		for (size_t i = 0; i < m_Meshes.size(); i++)
+		{
+			Mesh* m = m_Meshes[i];
+			XMFLOAT3& max = m->m_BoundsMax;
+			XMFLOAT3& min = m->m_BoundsMin;
+			
+			m_BoundsMax.x = max.x > m_BoundsMax.x ? max.x : m_BoundsMax.x;
+			m_BoundsMax.y = max.y > m_BoundsMax.y ? max.y : m_BoundsMax.y;
+			m_BoundsMax.z = max.z > m_BoundsMax.z ? max.z : m_BoundsMax.z;
+			m_BoundsMin.x = min.x < m_BoundsMin.x ? min.x : m_BoundsMin.x;
+			m_BoundsMin.y = min.y < m_BoundsMin.y ? min.y : m_BoundsMin.y;
+			m_BoundsMin.z = min.z < m_BoundsMin.z ? min.z : m_BoundsMin.z;
 		}
 	}
 }

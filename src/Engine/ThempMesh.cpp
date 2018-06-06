@@ -9,28 +9,42 @@ namespace Themp
 {
 	Mesh::Mesh()
 	{
-
+		m_BoundsMin = XMFLOAT3(0, 0, 0);
+		m_BoundsMax = XMFLOAT3(0, 0, 0);
 	}
 
 	Mesh::~Mesh()
 	{
-		delete[] vertices;
-		vertices = nullptr;
-		delete[] indices;
-		indices = nullptr;
+		delete[] m_Vertices;
+		m_Vertices = nullptr;
+		delete[] m_Indices;
+		m_Indices = nullptr;
 		m_Material = nullptr;
 		m_VertexBuffer = nullptr;
 		m_IndexBuffer = nullptr;
 	}
 	void Mesh::ConstructVertexBuffer()
 	{
-		i_VertexBuffer = Themp::Resources::TRes->CreateVertexBuffer(vertices, numVertices);
-		i_IndexBuffer = Themp::Resources::TRes->CreateIndexBuffer(indices, numIndices);
+		i_VertexBuffer = Themp::Resources::TRes->CreateVertexBuffer(m_Vertices, m_NumVertices);
+		i_IndexBuffer = Themp::Resources::TRes->CreateIndexBuffer(m_Indices, m_NumIndices);
 		m_VertexBuffer = Themp::Resources::TRes->m_VertexBuffers[i_VertexBuffer];
 		m_IndexBuffer = Themp::Resources::TRes->m_IndexBuffers[i_VertexBuffer];
+
+		m_BoundsMin = DirectX::XMFLOAT3(FLT_MAX, FLT_MAX, FLT_MAX);
+		m_BoundsMax = DirectX::XMFLOAT3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+		for (size_t i = 0; i < m_NumVertices; i++)
+		{
+			Vertex& v = m_Vertices[i];
+			if (v.x < m_BoundsMin.x) m_BoundsMin.x = v.x;
+			if (v.x > m_BoundsMax.x) m_BoundsMax.x = v.x;
+			if (v.y < m_BoundsMin.y) m_BoundsMin.y = v.y;
+			if (v.y > m_BoundsMax.y) m_BoundsMax.y = v.y;
+			if (v.z < m_BoundsMin.z) m_BoundsMin.z = v.z;
+			if (v.z > m_BoundsMax.z) m_BoundsMax.z = v.z;
+		}
 	}
 	
-	void Mesh::Draw(Themp::D3D& d3d, bool lightPass)
+	void Mesh::Draw(Themp::D3D& d3d, DrawPass pass)
 	{
 		uint32_t stride[] = { sizeof(Vertex) };
 		uint32_t offset[] = { 0 };
@@ -39,16 +53,24 @@ namespace Themp
 		d3d.m_DevCon->IASetIndexBuffer(m_IndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
 		//set resources for shader pipeline
-		if (!lightPass)
+		switch (pass)
 		{
-			d3d.m_DevCon->PSSetSamplers(0, 4, m_Material->m_SamplerStates);
-			d3d.m_DevCon->PSSetShaderResources(0, 4, m_Material->m_Views);
+			case GBUFFER:
+				d3d.m_DevCon->PSSetSamplers(0, 4, m_Material->m_SamplerStates);
+				d3d.m_DevCon->PSSetShaderResources(0, 4, m_Material->m_Views);
+				d3d.m_DevCon->VSSetShader(m_Material->m_VertexShader, 0, 0);
+				d3d.m_DevCon->PSSetShader(m_Material->m_PixelShader, 0, 0);
+				d3d.m_DevCon->GSSetShader(m_Material->m_GeometryShader, 0, 0);
+				break;
+			case SHADOW:
+				break;
+			case LIGHT:
+				break;
+			default:
+				break;
 		}
 		d3d.SetMaterialConstantBuffer(m_Material->m_MaterialConstantBuffer);
-
 		d3d.PSUploadConstantBuffersToGPU();
-
-
-		d3d.m_DevCon->DrawIndexed(numIndices, 0, 0);
+		d3d.m_DevCon->DrawIndexed(m_NumIndices, 0, 0);
 	}
 }

@@ -151,17 +151,25 @@ namespace Themp
 		m_Textures[basePath] = tex;
 		return tex;
 	}
-	Themp::Material* Resources::GetMaterial(std::string materialName, std::string texture, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED, int numElements, bool multisample)
+	Themp::Material* Resources::GetMaterial(std::string materialName, std::string texture, std::string shaderPath, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED, int numElements, bool multisample)
 	{
 		std::unordered_map<std::string, Themp::Material*>::iterator s = m_Materials.find(materialName);
 		if (s != m_Materials.end()) return s->second;
-		return LoadMaterial(materialName, texture, shaderPath, vertexShader, pixelShader, geometryShader, nonDefaultIED, numElements, multisample);
+		if (shaderPath == "")
+		{
+			shaderPath = "default";
+		}
+		return LoadMaterial(materialName, texture, shaderPath, geometryShader, nonDefaultIED, numElements, multisample);
 	}
-	Themp::Material* Resources::GetMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, bool multisample)
+	Themp::Material* Resources::GetMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool geometryShader, bool multisample)
 	{
 		std::unordered_map<std::string, Themp::Material*>::iterator s = m_Materials.find(materialName);
 		if (s != m_Materials.end()) return s->second;
-		return LoadMaterial(materialName, textures, textureTypes, shaderPath, vertexShader, pixelShader, geometryShader, multisample);
+		if (shaderPath == "")
+		{
+			shaderPath = "default";
+		}
+		return LoadMaterial(materialName, textures, textureTypes, shaderPath, geometryShader, multisample);
 	}
 	Themp::Object3D* Resources::GetModel(std::string path, bool uniqueMesh)
 	{
@@ -171,6 +179,9 @@ namespace Themp
 			//clone the model
 			Object3D* source = s->second;
 			Object3D* clone = new Object3D(*source);
+			clone->m_Position = XMFLOAT3(0, 0, 0);
+			clone->m_Scale = XMFLOAT3(1,1,1);
+			clone->m_Rotation = XMFLOAT3(0, 0, 0);
 			clone->m_ConstantBuffer = nullptr;
 
 			if (uniqueMesh)
@@ -181,12 +192,12 @@ namespace Themp
 					Mesh* srcMesh = source->m_Meshes[i];
 					Mesh* newMesh = new Mesh(*source->m_Meshes[i]);
 					m_Meshes.push_back(newMesh);
-					newMesh->indices = new uint32_t[srcMesh->numIndices];
-					memcpy(newMesh->indices, srcMesh->indices, sizeof(uint32_t)*srcMesh->numIndices);
-					newMesh->vertices = new Vertex[srcMesh->numVertices];
-					memcpy(newMesh->vertices, srcMesh->vertices, sizeof(Vertex)*srcMesh->numVertices);
-					newMesh->numIndices = srcMesh->numIndices;
-					newMesh->numVertices = srcMesh->numVertices;
+					newMesh->m_Indices = new uint32_t[srcMesh->m_NumIndices];
+					memcpy(newMesh->m_Indices, srcMesh->m_Indices, sizeof(uint32_t)*srcMesh->m_NumIndices);
+					newMesh->m_Vertices = new Vertex[srcMesh->m_NumVertices];
+					memcpy(newMesh->m_Vertices, srcMesh->m_Vertices, sizeof(Vertex)*srcMesh->m_NumVertices);
+					newMesh->m_NumIndices = srcMesh->m_NumIndices;
+					newMesh->m_NumVertices = srcMesh->m_NumVertices;
 					newMesh->ConstructVertexBuffer();
 					clone->m_Meshes.push_back(newMesh);
 				}
@@ -266,7 +277,7 @@ namespace Themp
 		ID3D11VertexShader* vShader = nullptr;
 		ID3D10Blob* VSRaw = ReadToBlob(basePath);
 		result = System::tSys->m_D3D->m_Device->CreateVertexShader(VSRaw->GetBufferPointer(), VSRaw->GetBufferSize(), nullptr, &vShader);
-		if (result != S_OK) { System::Print("Could not create default vertex shader from: %s", name.c_str()); return nullptr; }
+		if (result != S_OK) { System::Print("Could not create Vertex shader from: %s", name.c_str()); return nullptr; }
 		m_VertexShaders[basePath] = vShader;
 
 		return vShader;
@@ -283,7 +294,7 @@ namespace Themp
 		ID3D11PixelShader* pShader = nullptr;
 		ID3D10Blob* PSRaw = ReadToBlob(basePath);
 		result = System::tSys->m_D3D->m_Device->CreatePixelShader(PSRaw->GetBufferPointer(), PSRaw->GetBufferSize(), nullptr, &pShader);
-		if (result != S_OK) { System::Print("Could not create default pixel shader from: %s", name.c_str() ); return nullptr; }
+		if (result != S_OK) { System::Print("Could not create Pixel shader from: %s", name.c_str() ); return nullptr; }
 		m_PixelShaders[basePath] = pShader;
 
 		return pShader;
@@ -299,20 +310,23 @@ namespace Themp
 		ID3D11GeometryShader* gShader = nullptr;
 		ID3D10Blob* GSRaw = ReadToBlob(basePath);
 		result = System::tSys->m_D3D->m_Device->CreateGeometryShader(GSRaw->GetBufferPointer(), GSRaw->GetBufferSize(), nullptr, &gShader);
-		if (result != S_OK) { System::Print("Could not create default vertex shader from: %", name.c_str()); return nullptr; }
+		if (result != S_OK) { System::Print("Could not create Geometry shader from: %", name.c_str()); return nullptr; }
 		m_GeometryShaders[basePath] = gShader;
 
 		return gShader;
 	}
-	Themp::Material* Resources::LoadMaterial(std::string materialName, std::string texture, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED, int numElements, bool multisample)
+	Themp::Material* Resources::LoadMaterial(std::string materialName, std::string texture, std::string shaderPath, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED, int numElements, bool multisample)
 	{
 		std::string tempPath = shaderPath;
-
+		if (shaderPath == "default" && materialName != "")
+		{
+			Material::GetGBufferShaderName(materialName, shaderPath, geometryShader);
+		}
 		std::unordered_map<std::string, Material*>::iterator s = m_Materials.find(materialName);
 		if (s != m_Materials.end()) return s->second;
 
 		Material* material = new Themp::Material();
-		if (vertexShader)
+		//VERTEX SHADER
 		{
 			HRESULT res;
 #ifdef _DEBUG
@@ -341,9 +355,14 @@ namespace Themp
 			}
 			if (res == S_OK)
 				vsShaderBlob->Release();
-			if (res != S_OK) { System::Print("Could not create shader input layout"); delete material; return nullptr; }
+			if (res != S_OK) 
+			{
+				System::Print("Could not create shader input layout"); 
+				delete material;
+				return nullptr; 
+			}
 		}
-		if (pixelShader)
+		//PIXEL SHADER
 		{
 			tempPath = shaderPath;
 #ifdef _DEBUG
@@ -363,7 +382,12 @@ namespace Themp
 			tempPath.append(".cso");
 #endif
 			material->m_PixelShader = Resources::TRes->GetPixelShader(tempPath);
-			if (!material->m_PixelShader)System::Print("Couldn't find Pixel shader: %s", tempPath.c_str());;
+			if (!material->m_PixelShader)
+			{
+				System::Print("Couldn't find Pixel shader: %s", tempPath.c_str());
+				delete material;
+				return nullptr;
+			}
 		}
 		if (geometryShader)
 		{
@@ -385,15 +409,19 @@ namespace Themp
 		return material;
 	}
 
-	Themp::Material* Resources::LoadMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, bool multisample)
+	Themp::Material* Resources::LoadMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool geometryShader, bool multisample)
 	{
+		if (shaderPath == "default")
+		{
+			Material::GetGBufferShaderName(materialName,shaderPath, geometryShader);
+		}
 		std::string tempPath = shaderPath;
 
 		std::unordered_map<std::string, Material*>::iterator s = m_Materials.find(materialName);
 		if (s != m_Materials.end()) return s->second;
 
 		Themp::Material* material = new Themp::Material();
-		if (vertexShader)
+		//VERTEX SHADER
 		{
 			HRESULT res;
 #ifdef _DEBUG
@@ -418,7 +446,7 @@ namespace Themp
 				vsShaderBlob->Release();
 			if (res != S_OK) {System::Print( "Could not create shader input layout"); delete material;  return nullptr; }
 		}
-		if (pixelShader)
+		//PIXEL SHADER
 		{
 			tempPath = shaderPath;
 #ifdef _DEBUG
@@ -440,6 +468,7 @@ namespace Themp
 			material->m_PixelShader = Resources::TRes->GetPixelShader(tempPath);
 			if (!material->m_PixelShader)System::Print( "Couldn't find Pixel shader: %s" ,tempPath.c_str());
 		}
+
 		if (geometryShader)
 		{
 			tempPath = shaderPath;
@@ -506,9 +535,6 @@ namespace Themp
 		return material;
 	}
 
-
-
-
 	Themp::Object3D* Resources::LoadModel(std::string name)
 	{
 		struct MeshHeader
@@ -561,10 +587,10 @@ namespace Themp
 
 			//create the mesh object, assign all data.
 			Mesh* mesh = new Mesh();
-			mesh->vertices = vertices;
-			mesh->indices = indices;
-			mesh->numVertices = meshHeader.numVertices;
-			mesh->numIndices = meshHeader.numIndices;
+			mesh->m_Vertices = vertices;
+			mesh->m_Indices = indices;
+			mesh->m_NumVertices = meshHeader.numVertices;
+			mesh->m_NumIndices = meshHeader.numIndices;
 			//the mesh itself doesn't store a material ID but a pointer to material itself, we assign it later in the program so for now keep track of it..
 			materialOrder.push_back(meshHeader.materialID);
 			m_Meshes.push_back(mesh);
@@ -610,7 +636,7 @@ namespace Themp
 			}
 			if (numTextures != 0)
 			{
-				Themp::Material* newMaterial = GetMaterial(SanitizeSlashes(fileNameWithoutExtension + "/"+ materialName),textureNames,textureTypes, "default", true, true, false);
+				Themp::Material* newMaterial = GetMaterial(SanitizeSlashes(fileNameWithoutExtension + "/"+ materialName),textureNames,textureTypes, "default", false);
 				textureTypes.clear();
 				loadedMaterials.push_back(newMaterial);
 			}

@@ -6,7 +6,7 @@
 #include <istream>
 #include <fstream>
 #include <iostream>
-#include <FreeImage.h>
+#include <sstream>
 namespace Themp
 {
 	Material::Material()
@@ -157,48 +157,90 @@ namespace Themp
 		}
 
 	}
-	void Material::GetMaterialProperties(std::string matName,std::string* outPBRTexture)
+	void Material::GetMaterialProperties(std::string matName, std::string* outPBRTexture)
 	{
-		matName.append(".mat");
-		std::ifstream input(BASE_MATERIAL_PATH + matName);
-		if (input.good())
+		if (matName != "")
 		{
-			std::string line;
-			std::string a0, a1;
-			while (getline(input,line))
+			matName.append(".mat");
+			std::ifstream input(BASE_MATERIAL_PATH + matName);
+			if (input.good())
 			{
-				input >> a0 >> a1;
-
-				if (a0 == "PBRTexture")
+				std::string line;
+				std::string a0, a1, a2;
+				while (getline(input, line))
 				{
-					if (outPBRTexture)
+					std::stringstream stream(line);
+					if (line.size() > 0)
 					{
-						outPBRTexture->clear();
-						outPBRTexture->append(a1);
+						stream >> a0 >> a1 >> a2;
+						if (a0 == "PBRTexture")
+						{
+							if (outPBRTexture)
+							{
+								outPBRTexture->clear();
+								outPBRTexture->append(a1);
+							}
+						}
+						if (a0 == "Metallic")
+						{
+							m_MaterialConstantBufferData.Metallic = std::stof(a1);
+						}
+						if (a0 == "Roughness")
+						{
+							m_MaterialConstantBufferData.Roughness = std::stof(a1);
+						}
+						if (a0 == "IsEmissive")
+						{
+							m_MaterialConstantBufferData.isEmissive = (a1 == "true");
+						}
+						if (a0 == "EmissiveStrength")
+						{
+							m_MaterialConstantBufferData.EmissiveStrength = std::stof(a1);
+						}
 					}
 				}
-				if (a0 == "Metallic")
-				{
-					m_MaterialConstantBufferData.Metallic = std::stof(a1);
-				}
-				if (a0 == "Roughness")
-				{
-					m_MaterialConstantBufferData.Roughness = std::stof(a1);
-				}
-				if (a0 == "IsEmissive")
-				{
-					m_MaterialConstantBufferData.isEmissive = (a1 == "false" ? false : true);
-				}
-				if (a0 == "EmissiveStrength")
-				{
-					m_MaterialConstantBufferData.EmissiveStrength = std::stof(a1);
-				}
+				input.close();
 			}
-			input.close();
+			else
+			{
+#if LOG_MISSING_MATERIALS==1
+				System::Print("Could not find Material: %s", (BASE_MATERIAL_PATH + matName).c_str());
+#endif
+			}
 		}
-		else
+	}
+	void Material::GetGBufferShaderName(std::string matName, std::string& outShaderPath, bool& outHasGeometryShader)
+	{
+		if (matName != "")
 		{
-			System::Print("Could not find Material: %s", (BASE_MATERIAL_PATH + matName).c_str());
+			matName.append(".mat");
+			
+			std::ifstream input(BASE_MATERIAL_PATH + matName);
+			if (input.good())
+			{
+				std::string line;
+				std::string a0, a1, a2;
+				while (getline(input, line))
+				{
+					std::stringstream stream(line);
+					if (line.size() > 0)
+					{
+						stream >> a0 >> a1 >> a2;
+						if (a0 == "Shader")
+						{
+							outShaderPath = a1;
+							outHasGeometryShader = (a2 == "true");
+						}
+					}
+				}
+				input.close();
+			}
+			else
+			{
+#if LOG_MISSING_MATERIALS==1
+				System::Print("Could not find Material: %s", (BASE_MATERIAL_PATH + matName).c_str());
+#endif
+			}
 		}
 	}
 	void Material::UpdateBuffer()

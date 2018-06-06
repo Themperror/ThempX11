@@ -31,8 +31,8 @@ namespace Themp
 		float F0y;
 		float F0z;
 
-		float d4;
-		float d5;
+		float num_cascades = 4.0;
+		float shadow_atlas_size;
 		float d6;
 		float d7;
 	};
@@ -53,9 +53,9 @@ namespace Themp
 		void ResizeWindow(int newX, int newY);
 		void SetShadowType(int type);
 		bool SetMultiSample( int num);
-		void AddDirectionalLight(XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color, int resolution);
 		void SetLightDirty(LightType type, int index);
-		void SetDirectionalLight(int index, XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color);
+		void SetDirectionalLight(int index,bool enabled, XMFLOAT4 pos, XMFLOAT4 dir, XMFLOAT4 color);
+		void SetNumberCascades(int numCascades);
 		void PrepareSystemBuffer();
 		void Draw(Game& game);
 		void DrawImGUI();
@@ -88,7 +88,9 @@ namespace Themp
 		RenderTexture* m_RenderTextures[NUM_RENDER_TEXTURES];
 		RenderTexture* m_MainRender = nullptr;
 		ID3D11RenderTargetView* m_Rtvs[NUM_RENDER_TEXTURES];
-		ID3D11ShaderResourceView* m_ShaderResourceViews[NUM_SHADER_RESOURCE_VIEWS]; 
+
+		//enough potential SRV's I won't ever go out of bounds.
+		ID3D11ShaderResourceView* m_ShaderResourceViews[32]; 
 
 		ID3D11RenderTargetView* m_BackBuffer = nullptr;
 		ID3D11BlendState* m_OMBlendState = nullptr;

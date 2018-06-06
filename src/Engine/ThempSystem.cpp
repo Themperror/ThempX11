@@ -13,7 +13,8 @@
 #include <cstdarg>
 #include <sys/timeb.h>
 
-#pragma warning( disable : 4996) //disables warning unsafe function: freopen()
+#pragma warning( disable : 4996) //disables warning unsafe function: freopen() fopen() .. etc
+
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 IMGUI_API LRESULT ImGui_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 void ImGui_PrepareFrame();
@@ -408,8 +409,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 		}break;
 		case WM_DESTROY:
 		{
-			PostQuitMessage(0);
-			return 0; 
+			Themp::System::tSys->m_Quitting = true;
 		}break;
 		case WM_SIZE:
 		{
@@ -425,7 +425,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 			GetWindowRect(Themp::System::tSys->m_Window, &windowRect);
 			Themp::System::tSys->m_SVars[std::string("WindowPosX")] = windowRect.left;
 			Themp::System::tSys->m_SVars[std::string("WindowPosY")] = windowRect.top;
-		}
+		}break;
 		case WM_EXITSIZEMOVE:
 		{
 			//we're done resizing the window, now resize all the rendering resources

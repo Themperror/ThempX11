@@ -45,11 +45,16 @@ namespace Themp
 		void SetFoV(float degrees);
 		void SetOrtho(float w, float h);
 		void SetProjection(CameraType t);
+		void SetNear(float nearVal);
+		void SetFar(float farVal);
+
 		void CalcDirs();
 		void Update(float dt);
 		XMFLOAT4X4 GetMVPMatrix();
 		XMFLOAT4X4 GetInvMVPMatrix();
+		XMFLOAT4X4 GetViewMatrix();
 		XMFLOAT4X4 GetOrthoProjectionMatrix(float nearPlane, float farPlane);
+		XMFLOAT4X4 GetPerspectiveProjectionMatrix();
 		void UpdateMatrices();
 
 		XMFLOAT3 GetForward() { return m_Forward; }
@@ -57,12 +62,16 @@ namespace Themp
 		XMFLOAT3 GetUp() { return m_Up; }
 		XMFLOAT3 GetPosition() { return m_Position; }
 		XMFLOAT4 GetQuat() { return m_Quaternion; }
-		float GetFoV() { return m_FoV; }
+		float GetFoV() { return m_FoV * 57.2958f; }
+		float GetFovRadians() { return m_FoV; }
 		float GetOrthoWidth() { return m_OrthoWidth; }
 		float GetOrthoHeight() { return m_OrthoHeight; }
+		float GetAspectRatio() { return m_AspectRatio; }
+		float GetFar() { return m_Far; }
+		float GetNear() { return m_Near; }
 
 		CameraBuffer m_CameraConstantBufferData;
-		ID3D11Buffer* m_CameraConstantBuffer;
+		ID3D11Buffer* m_CameraConstantBuffer = nullptr;
 		bool isDirty = true;
 
 	private:
@@ -72,9 +81,10 @@ namespace Themp
 		XMFLOAT3 m_Up;
 		XMFLOAT3 m_Forward;
 		XMFLOAT3 m_Right;
-		float m_OrthoWidth, m_OrthoHeight;
-		float m_AspectRatio;
-		float m_FoV;
+		float m_OrthoWidth = 150, m_OrthoHeight = 150;
+		float m_AspectRatio = 1.0;
+		float m_FoV= 2.5f;
+		float m_Near=0.1f, m_Far = 500.0f;
 		CameraType m_CamType = Perspective;
 	};
 };

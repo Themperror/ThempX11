@@ -64,7 +64,7 @@ namespace Themp
 	//Most code is taken from https://github.com/ocornut/imgui/blob/master/examples/directx11_example/imgui_impl_dx11.cpp to speed up development
 	void GUI::Init()
 	{
-		m_Material = Themp::Resources::TRes->GetMaterial("GUI", "", "GUI", true, true, false, local_layout,3,false);
+		m_Material = Themp::Resources::TRes->GetMaterial("GUI", "", "GUI", false, local_layout,3,false);
 		
 		ID3D11Device* dev = Themp::System::tSys->m_D3D->m_Device;
 

@@ -1,11 +1,8 @@
 #pragma once
 #include <DirectXMath.h>
-#include <d3d11.h>
 namespace Themp
 {
 	using namespace DirectX;
-	class D3D;
-
 	class ShadowAtlas
 	{
 		struct MapNode
@@ -22,6 +19,13 @@ namespace Themp
 			bool taken;
 			int n_Size;
 			MapNode* n[4];
+			~MapNode()
+			{
+				for (int i = 0; i < 4; i++)
+				{
+					if(n[i])delete n[i];
+				}
+			}
 		};
 	public:
 		//only square textures allowed
@@ -30,11 +34,6 @@ namespace Themp
 		XMFLOAT3 FindSmallestFit(MapNode* n, int size, XMFLOAT3 offset);
 		XMFLOAT4 ObtainTextureArea(int size);
 
-		bool SetMultiSample(int num);
-
-		ID3D11DepthStencilView* m_DepthStencilView = nullptr;
-		ID3D11ShaderResourceView* m_ShaderResourceView = nullptr;
-		ID3D11Texture2D* m_ShadowMap = nullptr;
 		int m_Size;
 		MapNode* m_Base;
 	};

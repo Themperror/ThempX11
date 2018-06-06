@@ -27,8 +27,8 @@ namespace Themp
 		~Resources();
 		Texture* GetTexture(std::string path);
 		Texture* GetTexture(std::string path, bool isDefaulted);
-		Themp::Material * GetMaterial(std::string materialName, std::string texture, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED = nullptr, int numElements = 0, bool multisample = false);
-		Themp::Material * GetMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, bool multisample = false);
+		Themp::Material * GetMaterial(std::string materialName, std::string texture, std::string shaderPath, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED = nullptr, int numElements = 0, bool multisample = false);
+		Themp::Material * GetMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool geometryShader, bool multisample = false);
 		
 		//uniqueMesh only has effect if the model you are loading was loaded in before (if true it will duplicate the mesh instead of reusing the existing one)
 		Object3D* GetModel(std::string path, bool uniqueMesh = false);
@@ -55,9 +55,9 @@ namespace Themp
 
 	private:
 		//shaderpath will detect shaders in a named pattern like "path_%type%" so as shader_VS, shader_PS, shader_GS
-		Themp::Material* LoadMaterial(std::string materialName, std::string texture, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED = nullptr, int numElements = 0, bool multisample = false);
+		Themp::Material* LoadMaterial(std::string materialName, std::string texture, std::string shaderPath, bool geometryShader, D3D11_INPUT_ELEMENT_DESC* nonDefaultIED = nullptr, int numElements = 0, bool multisample = false);
 		//shaderpath will detect shaders in a named pattern like "path_%type%" so as shader_VS, shader_PS, shader_GS
-		Themp::Material * LoadMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool vertexShader, bool pixelShader, bool geometryShader, bool multisample = false);
+		Themp::Material * LoadMaterial(std::string materialName, std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes, std::string shaderPath, bool geometryShader, bool multisample = false);
 
 		Object3D* LoadModel(std::string name);
 	};

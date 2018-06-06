@@ -8,9 +8,9 @@ namespace Themp
 {
 	struct Texture
 	{
-		ID3D11Resource* m_Resource;
-		ID3D11ShaderResourceView* m_View;
-		ID3D11SamplerState* m_SamplerState;
+		ID3D11Resource* m_Resource = nullptr;
+		ID3D11ShaderResourceView* m_View = nullptr;
+		ID3D11SamplerState* m_SamplerState = nullptr;
 		~Texture()
 		{
 			if (m_Resource)
@@ -65,6 +65,7 @@ namespace Themp
 		ID3D11GeometryShader* m_GeometryShader;
 		ID3D11InputLayout* m_InputLayout;
 
+
 		ID3D11ShaderResourceView* m_Views[MAX_TEXTURES];
 		ID3D11SamplerState* m_SamplerStates[MAX_TEXTURES];
 		Themp::Texture* m_Textures[MAX_TEXTURES];
@@ -74,12 +75,12 @@ namespace Themp
 		uint32_t* textureSlots;
 		uint32_t numTextures = 0;
 
-
 		ID3D10Blob* ReadToBlob(std::string path);
 		void ReadTexture(std::string path);
 		void ReadTextures(std::vector<std::string>& textures, std::vector<uint8_t>& textureTypes);
-		void GetMaterialProperties(std::string matName,std::string* outPBRTexture = nullptr);
+		void GetMaterialProperties(std::string matName, std::string* outPBRTexture = nullptr);
 		void UpdateBuffer();
+		static void GetGBufferShaderName(std::string matName, std::string& outShaderPath, bool& outHasGeometryShader);
 		//void ReadTextures(std::vector<std::string>& textures);
 	};
 }

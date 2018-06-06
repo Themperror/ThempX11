@@ -10,6 +10,7 @@ namespace Themp
 		m_ResolutionY = height;
 		ID3D11Device* m_Device = Themp::System::tSys->m_D3D->m_Device;
 		if (multisample == 0) multisample = 1;
+		m_Multisample = multisample;
 		if (type == TextureType::RenderTex || type == TextureType::RenderTexArray)
 		{
 			HRESULT result;
@@ -34,7 +35,6 @@ namespace Themp
 			memset(&srvDesc, 0, sizeof(D3D11_SHADER_RESOURCE_VIEW_DESC));
 			srvDesc.Format = renderTexDesc.Format;
 			srvDesc.Texture2D.MipLevels = 1;
-			srvDesc.Texture2D.MostDetailedMip = 0;
 			srvDesc.ViewDimension = type != RenderTexArray ? (multisample == 1 ? D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2D : D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2DMS) : (multisample == 1 ? D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2DARRAY : D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2DMSARRAY);
 
 			result = m_Device->CreateShaderResourceView(m_Texture, &srvDesc, &m_ShaderResourceView);
@@ -69,8 +69,9 @@ namespace Themp
 			depthBufferDesc.CPUAccessFlags = 0;
 			
 			depthBufferDesc.ArraySize = type != DepthTexArray ? 1 : numTextures;
-			depthSRVDesc.ViewDimension = type != DepthTexArray ? D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2D : D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+			depthSRVDesc.ViewDimension = type != DepthTexArray ? (multisample == 1 ? D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2D : D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2DMS) :(multisample == 1 ? D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2DARRAY : D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2DMSARRAY);
 			descDSV.ViewDimension = type != DepthTexArray ? (multisample == 1 ? D3D11_DSV_DIMENSION_TEXTURE2D : D3D11_DSV_DIMENSION_TEXTURE2DMS) : (multisample == 1 ? D3D11_DSV_DIMENSION_TEXTURE2DARRAY : D3D11_DSV_DIMENSION_TEXTURE2DMSARRAY);
+
 			
 			result = m_Device->CreateTexture2D(&depthBufferDesc, NULL, &m_Texture);
 			if (result != S_OK)
@@ -78,13 +79,16 @@ namespace Themp
 				System::Print("Could not create Depthstencil texture");
 				return;
 			}
-			if (depthFormat != DXGI_FORMAT_R32_TYPELESS || depthFormat != DXGI_FORMAT_R32G32_TYPELESS || depthFormat != DXGI_FORMAT_R32G32B32_TYPELESS || depthFormat != DXGI_FORMAT_R32G32B32A32_TYPELESS)
+			if (depthFormat != DXGI_FORMAT_R32_TYPELESS && depthFormat != DXGI_FORMAT_R32G32_TYPELESS && depthFormat != DXGI_FORMAT_R32G32B32_TYPELESS && depthFormat != DXGI_FORMAT_R32G32B32A32_TYPELESS)
 			{
 				System::Print("Format needs to be of 32 bit type (with up to 4 channels), 16 bit or different is not supported");
 			}
 			descDSV.Format = DXGI_FORMAT_D32_FLOAT;
-			descDSV.Texture2D.MipSlice = 0;
+			
 
+			//this stuff is unioned so I'm not entirely sure if this is the best way to do it since the second statement might overwrite a variable from the first
+			descDSV.Texture2DArray.ArraySize = m_Multisample == 1 ? type != DepthTexArray ? 0 : numTextures : 0;
+			descDSV.Texture2DMSArray.ArraySize = m_Multisample != 1 ? type != DepthTexArray ? 0 : numTextures : 0;
 
 			// Create the depth stencil view
 			result = m_Device->CreateDepthStencilView(m_Texture, // Depth stencil texture
@@ -95,14 +99,47 @@ namespace Themp
 				System::Print("Could not create Depthstencil view");
 				return;
 			}
+
+			if (multisample == 1)
+			{
+				if (type == TextureType::DepthTex)
+				{
+					D3D11_TEX2D_SRV tex2D;
+					tex2D.MipLevels = 1;
+					tex2D.MostDetailedMip = 0;
+					depthSRVDesc.Texture2D = tex2D;
+				}
+				else
+				{
+					D3D11_TEX2D_ARRAY_SRV tex2DArray;
+					
+					tex2DArray.ArraySize = descDSV.Texture2DArray.ArraySize;
+					tex2DArray.MipLevels = 1;
+					tex2DArray.FirstArraySlice = 0;
+					tex2DArray.MostDetailedMip = 0;
+					depthSRVDesc.Texture2DArray = tex2DArray;
+				}
+			}
+			else
+			{
+				if (type == TextureType::DepthTex)
+				{
+					D3D11_TEX2D_SRV tex2D;
+					tex2D.MipLevels = 1;
+					tex2D.MostDetailedMip = 0;
+					depthSRVDesc.Texture2D = tex2D;
+				}
+				else
+				{
+					depthSRVDesc.Texture2DMSArray.ArraySize = descDSV.Texture2DMSArray.ArraySize;
+					depthSRVDesc.Texture2DMSArray.FirstArraySlice = 0;
+				}
+			}
+
 			depthSRVDesc.Format =	depthFormat == DXGI_FORMAT_R32_TYPELESS ? DXGI_FORMAT_R32_FLOAT : depthFormat == DXGI_FORMAT_R32G32_TYPELESS ? DXGI_FORMAT_R32G32_FLOAT : 
 									depthFormat == DXGI_FORMAT_R32G32B32_TYPELESS ? DXGI_FORMAT_R32G32B32_FLOAT : DXGI_FORMAT_R32G32B32A32_FLOAT;
-			depthSRVDesc.Texture2D.MipLevels = 1;
-			depthSRVDesc.Texture2D.MostDetailedMip = 0;
 
-			result = m_Device->CreateShaderResourceView(m_Texture, // Depth stencil texture
-				&depthSRVDesc, // Depth stencil desc
-				&m_ShaderResourceView);  // [out] Depth stencil view
+			result = m_Device->CreateShaderResourceView(m_Texture, 	&depthSRVDesc, 	&m_ShaderResourceView);  
 			if (result != S_OK)
 			{
 				System::Print("Could not create Depthstencil shader resource view");

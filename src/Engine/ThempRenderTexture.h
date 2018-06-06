@@ -14,6 +14,7 @@ namespace Themp
 		int m_ResolutionX = 0;
 		int m_ResolutionY = 0;
 		TextureType m_TextureType;
+		int m_Multisample = 1;
 		ID3D11RenderTargetView* m_RenderTarget = nullptr;
 		ID3D11DepthStencilView* m_DepthStencilView = nullptr;
 		ID3D11ShaderResourceView* m_ShaderResourceView;

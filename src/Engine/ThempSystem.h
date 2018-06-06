@@ -6,7 +6,7 @@
 #include <time.h>
 #include <iostream>
 #define ReportLiveObjects 0
-
+#define LOG_MISSING_MATERIALS 0
 #define CLEAN(x) if(x){x->Release();x=nullptr;}
 
 namespace Themp
