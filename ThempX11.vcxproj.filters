@@ -105,6 +105,12 @@
     <ClCompile Include="src\Engine\ThempShadowAtlas.cpp">
       <Filter>Source Files\Engine</Filter>
     </ClCompile>
+    <ClCompile Include="src\Engine\ThempFunctions.cpp">
+      <Filter>Source Files\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine\ThempDebugDraw.cpp">
+      <Filter>Source Files\Engine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Engine\ThempD3D.h">
@@ -174,6 +180,12 @@
       <Filter>Header Files\Engine\Shadowing</Filter>
     </ClInclude>
     <ClInclude Include="src\Engine\ThempShadowAtlas.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine\ThempFunctions.h">
+      <Filter>Header Files\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine\ThempDebugDraw.h">
       <Filter>Header Files\Engine</Filter>
     </ClInclude>
   </ItemGroup>
@@ -265,9 +277,27 @@
     <FxCompile Include="resources\shaders\DeferredShadowCascade_gs.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="resources\shaders\Lava_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\Lava_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DebugLine_ps.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\DebugLine_vs.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="resources\shaders\Defines.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="resources\shaders\Functions.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="resources\shaders\Structs.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
   </ItemGroup>

@@ -142,6 +142,8 @@
     <ClCompile Include="src\Engine\Shadowing\ThempShadowUnfiltered.cpp" />
     <ClCompile Include="src\Engine\Shadowing\ThempShadowVariance.cpp" />
     <ClCompile Include="src\Engine\ThempCamera.cpp" />
+    <ClCompile Include="src\Engine\ThempDebugDraw.cpp" />
+    <ClCompile Include="src\Engine\ThempFunctions.cpp" />
     <ClCompile Include="src\Engine\ThempGUI.cpp" />
     <ClCompile Include="src\Engine\ThempShadowAtlas.cpp" />
     <ClCompile Include="src\Engine\ThempSystem.cpp" />
@@ -169,6 +171,8 @@
     <ClInclude Include="src\Engine\Shadowing\ThempShadowUnfiltered.h" />
     <ClInclude Include="src\Engine\Shadowing\ThempShadowVariance.h" />
     <ClInclude Include="src\Engine\ThempCamera.h" />
+    <ClInclude Include="src\Engine\ThempDebugDraw.h" />
+    <ClInclude Include="src\Engine\ThempFunctions.h" />
     <ClInclude Include="src\Engine\ThempGUI.h" />
     <ClInclude Include="src\Library\imconfig.h" />
     <ClInclude Include="src\Library\imgui.h" />
@@ -176,6 +180,13 @@
     <ClInclude Include="src\Library\stb_rect_pack.h" />
     <ClInclude Include="src\Library\stb_textedit.h" />
     <ClInclude Include="src\Library\stb_truetype.h" />
+    <FxCompile Include="resources\shaders\DebugLine_ps.hlsl" />
+    <FxCompile Include="resources\shaders\DebugLine_vs.hlsl">
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VShader</EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">VShader</EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
+    </FxCompile>
     <FxCompile Include="resources\shaders\default_gs.hlsl">
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">GS</EntryPointName>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Geometry</ShaderType>
@@ -206,7 +217,10 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)\data\shaders\%(Filename)_d.cso</ObjectFileOutput>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)\data\shaders\%(Filename).cso</ObjectFileOutput>
     </FxCompile>
-    <FxCompile Include="resources\shaders\DeferredLightingCascade_ps.hlsl" />
+    <FxCompile Include="resources\shaders\DeferredLightingCascade_ps.hlsl">
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">5.0</ShaderModel>
+    </FxCompile>
     <FxCompile Include="resources\shaders\DeferredLightingCascade_vs.hlsl">
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VShader</EntryPointName>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
@@ -299,6 +313,10 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)\data\shaders\%(Filename)_d.cso</ObjectFileOutput>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)\data\shaders\%(Filename).cso</ObjectFileOutput>
     </FxCompile>
+    <None Include="resources\shaders\Structs.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <FileType>Document</FileType>
+    </None>
     <None Include="resources\shaders\Defines.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -331,6 +349,10 @@
     <ClInclude Include="src\Engine\ThempRenderTexture.h" />
     <ClInclude Include="src\Engine\ThempResources.h" />
     <ClInclude Include="src\Game\ThempGame.h" />
+    <None Include="resources\shaders\Functions.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <FileType>Document</FileType>
+    </None>
     <FxCompile Include="resources\shaders\GUI_ps.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
@@ -348,6 +370,13 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)\data\shaders\%(Filename).cso</ObjectFileOutput>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VShader</EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">VShader</EntryPointName>
+    </FxCompile>
+    <FxCompile Include="resources\shaders\Lava_ps.hlsl" />
+    <FxCompile Include="resources\shaders\Lava_vs.hlsl">
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VShader</EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">VShader</EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
     </FxCompile>
     <FxCompile Include="resources\shaders\PostProcess_ps.hlsl" />
     <FxCompile Include="resources\shaders\PostProcess_vs.hlsl">
