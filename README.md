@@ -17,7 +17,7 @@ Regular Shadow Mapping (unfiltered) - done
 
 Percentage-Closer Filtering - done
 
-Cascaded Shadow Mapping - W.I.P
+Cascaded Shadow Mapping - done yet unpolished
 
 Variance Shadow Mapping - Planned
 
